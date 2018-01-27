@@ -1,0 +1,15 @@
+pub struct ClassType;
+pub struct ClassTypeDesc;
+pub struct ClassSignature;
+pub struct ClassTypeField;
+pub struct ClassTypeFieldDesc;
+pub struct ClassInfos;
+pub struct ClassDescription;
+pub struct ClassTypeDeclaration;
+pub struct ClassExpr;
+pub struct ClassExprDesc;
+pub struct ClassStructure;
+pub struct ClassField;
+pub struct ClassFieldDesc;
+pub struct ClassFieldKind;
+pub struct ClassDeclaration;

@@ -1,0 +1,9 @@
+.*
+*~
+!.gitignore
+
+target
+
+*.cmi
+*.cmx
+*.o
