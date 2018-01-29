@@ -20,7 +20,23 @@ pub struct Pattern {
 #[serde(tag = "type", content = "value")]
 pub enum PatternDesc {
     Any,
-    // TODO
+    // var
+    // alias
+    // constant
+    // interval
+    // tuple
+    Construct(Loc<LongIdent>, Option<Box<Pattern>>),
+    // variant
+    // record
+    // array
+    // or
+    // constraint
+    // type
+    // lazy
+    // unpack
+    // exception
+    // extension
+    // open
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -35,8 +51,39 @@ pub struct Expression {
 pub enum ExpressionDesc {
     Ident(Loc<LongIdent>),
     Constant(Constant),
+    // let
+    // function
+    // fun
     Apply(Box<Expression>, Vec<(ArgLabel, Expression)>),
-    // TODO
+    // match
+    // try
+    // tuple
+    Construct(Loc<LongIdent>, Option<Box<Expression>>),
+    // variant
+    // record
+    // field
+    // setfield
+    // array
+    // ifthenelse
+    // sequence
+    // while
+    // for
+    // constraint
+    // coerce
+    // send
+    // new
+    // setinstvar
+    // override
+    // letmodule
+    // letexception
+    // assert
+    // lazy
+    // poly
+    // object
+    // newtype
+    // pack
+    // open
+    // extension
     Unreachable,
 }
 

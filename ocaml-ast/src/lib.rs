@@ -1,4 +1,11 @@
 //! The OCaml AST, and a parser.
+//!
+//! The AST structures are based off of OCaml's
+//! [Parsetree](https://caml.inria.fr/pub/docs/manual-ocaml/libref/Parsetree.html)
+//! module.
+//!
+//! This works by converting the nodes to JSON in OCaml, then shuffling the
+//! string across the AST boundary. It's not ideal...
 // #![warn(missing_docs)]
 
 #[macro_use]
@@ -29,10 +36,13 @@ pub use ast_toplevel::*;
 /// The main parser function.
 ///
 /// TODO: Use a real error type.
-pub fn parse(src: &str, filename: Option<&str>) -> Result<Vec<ToplevelPhrase>, String> {
+pub fn parse(
+    src: &str,
+    filename: Option<&str>,
+) -> Result<Vec<ToplevelPhrase>, String> {
     ffi::init("ocaml_ast").unwrap();
 
-    ffi::parse(src, filename)
+    let mut ast: Vec<ToplevelPhrase> = ffi::parse(src, filename)
         .map_err(String::from)
         .and_then(|json| {
             let json = serde_json::to_string_pretty(
@@ -40,7 +50,12 @@ pub fn parse(src: &str, filename: Option<&str>) -> Result<Vec<ToplevelPhrase>, S
             ).unwrap();
             println!("{}", json);
             serde_json::from_str(&json).map_err(|e| e.to_string())
-        })
+        })?;
+    ast.retain(|tlp| match *tlp {
+        ToplevelPhrase::Def(ref s) => !s.is_empty(),
+        _ => true,
+    });
+    Ok(ast)
 }
 
 /// A constant value.

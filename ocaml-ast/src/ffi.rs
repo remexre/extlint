@@ -13,7 +13,11 @@ union out_data {
 extern "C" {
     fn ocaml_ast_init(exec_name: *const c_char) -> c_int;
 
-    fn ocaml_ast_parse(src: *const c_char, path: *const c_char, out_data: *mut out_data) -> c_int;
+    fn ocaml_ast_parse(
+        src: *const c_char,
+        path: *const c_char,
+        out_data: *mut out_data,
+    ) -> c_int;
 }
 
 pub fn init(s: &str) -> Result<bool, NulError> {
@@ -32,7 +36,10 @@ pub fn init(s: &str) -> Result<bool, NulError> {
     }
 }
 
-pub fn parse(src: &str, filename: Option<&str>) -> Result<String, &'static str> {
+pub fn parse(
+    src: &str,
+    filename: Option<&str>,
+) -> Result<String, &'static str> {
     let src = CString::new(src).unwrap(); // TODO Handle error
     let filename = filename.map(|f| {
         CString::new(f).unwrap() // TODO Handle error
