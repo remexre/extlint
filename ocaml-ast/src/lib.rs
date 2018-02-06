@@ -40,14 +40,15 @@ pub fn parse(
     src: &str,
     filename: Option<&str>,
 ) -> Result<Vec<ToplevelPhrase>, String> {
-    ffi::init("ocaml_ast").unwrap();
+    ffi::init("ocaml_ast").expect("Failed to initialize OCaml");
 
     let mut ast: Vec<ToplevelPhrase> = ffi::parse(src, filename)
         .map_err(String::from)
         .and_then(|json| {
             let json = serde_json::to_string_pretty(
-                &serde_json::from_str::<serde_json::Value>(&json).unwrap(),
-            ).unwrap();
+                &serde_json::from_str::<serde_json::Value>(&json)
+                    .expect("Syntax error from OCaml"),
+            ).expect("Failed to serialize JSON");
             println!("{}", json);
             serde_json::from_str(&json).map_err(|e| e.to_string())
         })?;

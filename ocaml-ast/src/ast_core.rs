@@ -1,13 +1,43 @@
-use {Constant, Location};
-use ast_extension::Attributes;
-use ast_locations::Loc;
-use ast_misc::{ArgLabel, LongIdent};
+use Constant;
+use ast_extension::{Attributes, Extension};
+use ast_locations::{Loc, Location};
+use ast_misc::{ArgLabel, LongIdent, Variance};
 
-pub struct CoreType;
-pub struct CoreTypeDesc;
-pub struct PackageType;
-pub struct RowField;
-pub struct ObjectField;
+/// A primitive type.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CoreType {
+    pub desc: CoreTypeDesc,
+    pub location: Location,
+    pub attributes: Attributes,
+}
+
+/// The contents of a CoreType.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CoreTypeDesc {
+    Any,
+    Var(String),
+    Arrow(ArgLabel, Box<CoreType>, Box<CoreType>),
+    Tuple(Vec<CoreType>),
+    Constr(Loc<LongIdent>, Vec<CoreType>),
+    Object(Vec<ObjectField>, bool),
+    Class(Loc<LongIdent>, Vec<CoreType>),
+    Alias(Box<CoreType>, String),
+    Variant(Vec<RowField>, bool, Option<Vec<String>>),
+    Poly(Vec<Loc<String>>, Box<CoreType>),
+    Package(Loc<LongIdent>, Vec<(Loc<LongIdent>, CoreType)>),
+    Extension(Extension),
+}
+
+/// A single possiblity in a enumerated type.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum RowField {
+    Tag(Loc<String>, Attributes, bool, Vec<CoreType>),
+    Inherit(CoreType),
+}
+
+/// A variable in a record.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ObjectField {}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pattern {
@@ -89,7 +119,25 @@ pub enum ExpressionDesc {
 
 pub struct Case;
 pub struct ValueDescription;
-pub struct TypeDeclaration;
+
+/// The contents of a single type declaration.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TypeDeclaration {
+    /// The name of the type.
+    pub name: Loc<String>,
+
+    /// The type's parameters.
+    pub params: Vec<(CoreType, Variance)>,
+
+    // cstrs
+    // kind
+    // private
+    // manifest
+    // attributes
+    /// The location of the type declaration.
+    pub location: Location,
+}
+
 pub struct TypeKind;
 pub struct LabelDeclaration;
 pub struct ConstructorDeclaration;

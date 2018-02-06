@@ -13,3 +13,11 @@ pub enum LongIdent {
     Dot(Box<LongIdent>, String),
     Apply(Box<LongIdent>, Box<LongIdent>),
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value")]
+pub enum Variance {
+    Covariant,
+    Contravariant,
+    Invariant,
+}

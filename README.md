@@ -7,7 +7,9 @@ Designed to be used as part of the grading infrastructure for CSCI2041.
 
 ### Dependencies
 
-TODO
+Requires a working Rust installation, which can be obtained with [rustup](https://rustup.rs/).
+Requires an installation of OCaml, including the compiler-libs package.
+Requires a C compiler.
 
 ### Compiling
 
