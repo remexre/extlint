@@ -1,5 +1,6 @@
 [workspace]
 members = [
 	"json_of_ocaml",
+	"get-gitgrade-repos",
 	"ocaml-ast",
 ]

@@ -2,7 +2,8 @@
 *~
 !.gitignore
 
-target
+repos/
+target/
 
 *.cmi
 *.cmx

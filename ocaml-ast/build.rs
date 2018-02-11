@@ -61,7 +61,7 @@ fn compile_ocaml(base: &str) -> PathBuf {
         .arg(src_file)
         .output()
         .unwrap();
-    for line in String::from_utf8_lossy(&output.stderr).split("\n") {
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
         println!("cargo:warning={}", line);
     }
     if !output.status.success() {

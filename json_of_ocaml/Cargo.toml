@@ -9,6 +9,6 @@ repository = "https://github.umn.edu/ringo025/extlint"
 version = "0.1.0"
 
 [dependencies]
-clap = "2.29.2"
+clap = "2.29.4"
 ocaml-ast = { path = "../ocaml-ast" }
 serde_json = "1.0.9"
