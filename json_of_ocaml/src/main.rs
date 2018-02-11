@@ -13,6 +13,7 @@ fn main() {
         (author: crate_authors!())
         (version: crate_version!())
         (@arg FILE: "The OCaml code to print")
+        (@arg SILENT: -s --silent "Don't actually output JSON, only validate the OCaml file")
     ).get_matches();
 
     let file = matches.value_of("FILE");
@@ -23,21 +24,25 @@ fn main() {
     let ast = parse(&src, file).unwrap_or_else(|err| {
         panic!("Couldn't parse {}: {}", file.unwrap_or("stdin"), err)
     });
-    println!("{:?}", ast)
+
+    if !matches.is_present("SILENT") {
+        use std::io::stdout;
+        serde_json::to_writer(stdout(), &ast).unwrap()
+    }
 }
 
-fn read_from(path: Option<&str>) -> Result<String, IoError> {
+fn read_from(path: Option<&str>) -> Result<Vec<u8>, IoError> {
     use std::io::Read;
 
-    let mut buf = String::new();
+    let mut buf = Vec::new();
     let _: usize = match path {
         Some(f) => {
             use std::fs::File;
-            File::open(f)?.read_to_string(&mut buf)?
+            File::open(f)?.read_to_end(&mut buf)?
         }
         None => {
             use std::io::stdin;
-            stdin().read_to_string(&mut buf)?
+            stdin().read_to_end(&mut buf)?
         }
     };
     Ok(buf)

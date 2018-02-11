@@ -2,6 +2,7 @@ use Constant;
 use ast_extension::{Attributes, Extension};
 use ast_locations::{Loc, Location};
 use ast_misc::{ArgLabel, LongIdent, Variance};
+use ast_module::ValueBinding;
 
 /// A primitive type.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -13,6 +14,7 @@ pub struct CoreType {
 
 /// The contents of a CoreType.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value")]
 pub enum CoreTypeDesc {
     Any,
     Var(String),
@@ -50,17 +52,17 @@ pub struct Pattern {
 #[serde(tag = "type", content = "value")]
 pub enum PatternDesc {
     Any,
-    // var
+    Var(Loc<String>),
     // alias
-    // constant
+    Constant(Constant),
     // interval
-    // tuple
+    Tuple(Vec<Pattern>),
     Construct(Loc<LongIdent>, Option<Box<Pattern>>),
     // variant
     // record
     // array
-    // or
-    // constraint
+    Or(Box<Pattern>, Box<Pattern>),
+    Constraint(Box<Pattern>, CoreType),
     // type
     // lazy
     // unpack
@@ -81,24 +83,24 @@ pub struct Expression {
 pub enum ExpressionDesc {
     Ident(Loc<LongIdent>),
     Constant(Constant),
-    // let
-    // function
-    // fun
+    Let(bool, Vec<ValueBinding>, Box<Expression>),
+    Function(Vec<Case>),
+    Fun(ArgLabel, Option<Box<Expression>>, Pattern, Box<Expression>),
     Apply(Box<Expression>, Vec<(ArgLabel, Expression)>),
-    // match
-    // try
-    // tuple
+    Match(Box<Expression>, Vec<Case>),
+    Try(Box<Expression>, Vec<Case>),
+    Tuple(Vec<Expression>),
     Construct(Loc<LongIdent>, Option<Box<Expression>>),
     // variant
-    // record
-    // field
-    // setfield
+    Record(Vec<(Loc<LongIdent>, Expression)>, Option<Box<Expression>>),
+    Field(Box<Expression>, Loc<LongIdent>),
+    SetField(Box<Expression>, Loc<LongIdent>, Box<Expression>),
     // array
-    // ifthenelse
-    // sequence
+    IfThenElse(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
+    Sequence(Box<Expression>, Box<Expression>),
     // while
     // for
-    // constraint
+    Constraint(Box<Expression>, CoreType),
     // coerce
     // send
     // new
@@ -117,7 +119,20 @@ pub enum ExpressionDesc {
     Unreachable,
 }
 
-pub struct Case;
+/// A single case in a `function` or `match` expression.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Case {
+    /// The pattern the value must match.
+    pub pat: Pattern,
+
+    /// The guard expression, if any.
+    pub guard: Option<Expression>,
+
+    /// The expression evaluated if the pattern matches and the guard
+    /// expression evaluates to true.
+    pub expr: Expression,
+}
+
 pub struct ValueDescription;
 
 /// The contents of a single type declaration.

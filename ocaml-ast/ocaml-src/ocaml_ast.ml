@@ -96,6 +96,7 @@ let json_of_option f = function
 | None -> Null
 
 let json_of_list f xs = Array(List.map f xs)
+let json_of_pair f g (x, y) = Array([f x; g y])
 
 let json_of_string s = String(s)
 let json_of_char = json_of_string % String.make 1
@@ -108,6 +109,12 @@ let variant (ty: string) (value: json) : json =
 
 let json_of_arg_label = function
 | Nolabel -> variant "NoLabel" Null
+| Labelled s -> variant "Labelled" @@ String(s)
+| Optional s -> variant "Optional" @@ String(s)
+
+let json_of_closed_flag = function
+| Closed -> Bool(true)
+| Open -> Bool(false)
 
 let rec json_of_long_ident = function
 | Lident(s) -> variant "Ident" @@ json_of_string s
@@ -158,13 +165,17 @@ let json_of_constant = function
             String(str);
             json_of_option json_of_char suffix;
         ])
-| Pconst_char(c) -> failwith "Pconst_char"
+| Pconst_char(c) -> variant "Char" @@ String(String.make 1 c)
 | Pconst_string(str, suffix) ->
         variant "String" @@ Array([
             String(str);
             json_of_option json_of_string suffix;
         ])
-| Pconst_float(str, suffix) -> failwith "Pconst_float"
+| Pconst_float(str, suffix) ->
+        variant "Float" @@ Array([
+            String(str);
+            json_of_option json_of_char suffix;
+        ])
 
 (*****************************************************************************)
 (****************************** EXTENSION POINTS *****************************)
@@ -189,10 +200,6 @@ let json_of_payload = function
 | PPat(p, e) -> failwith "PPat"
 
 (*****************************************************************************)
-(****************************** EXTENSION POINTS *****************************)
-(*****************************************************************************)
-
-(*****************************************************************************)
 (******************************** CORE LANGUAGE ******************************)
 (*****************************************************************************)
 
@@ -205,7 +212,7 @@ let rec json_of_core_type (ct: core_type) : json =
 
 and json_of_core_type_desc = function
 | Ptyp_any -> variant "Any" Null
-| Ptyp_var(s) -> variant "Any" @@ json_of_string s
+| Ptyp_var(s) -> variant "Var" @@ json_of_string s
 | Ptyp_arrow(a, l, r) -> variant "Arrow" @@ Array([
                                                 json_of_arg_label a;
                                                 json_of_core_type l;
@@ -255,6 +262,11 @@ let rec json_of_pattern_desc = function
 (*
 | Ppat_record of (Longident.t Asttypes.loc * pattern) list * Asttypes.closed_flag
 *)
+| Ppat_record(ms, closed) ->
+    variant "Record" @@ Array([
+        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_pattern) ms;
+        json_of_closed_flag closed;
+    ])
 | Ppat_array(ps) -> variant "Array" @@ json_of_list json_of_pattern ps
 | Ppat_or(l, r) ->
         variant "Or" @@ Array([
@@ -267,9 +279,7 @@ let rec json_of_pattern_desc = function
                                                    ])
 | Ppat_type(t) -> variant "Type" @@ json_of_loc json_of_long_ident t
 | Ppat_lazy(p) -> variant "Lazy" @@ json_of_pattern p
-(*
-| Ppat_unpack of string Asttypes.loc
-*)
+| Ppat_unpack(s) -> variant "Unpack" @@ json_of_loc json_of_string s
 | Ppat_exception(p) -> variant "Exception" @@ json_of_pattern p
 (*
 | Ppat_extension of extension
@@ -285,6 +295,38 @@ and json_of_pattern (pat: pattern) : json =
         ("desc", json_of_pattern_desc pat.ppat_desc);
         ("location", json_of_location pat.ppat_loc);
         ("attributes", json_of_attributes pat.ppat_attributes);
+    ])
+
+let json_of_mutable_flag = function
+| Immutable -> Bool(false)
+| Mutable -> Bool(true)
+
+let json_of_label_decl (decl: label_declaration) =
+    Object([
+        ("name", json_of_loc json_of_string decl.pld_name);
+        ("mutable", json_of_mutable_flag decl.pld_mutable);
+        ("type", json_of_core_type decl.pld_type);
+        ("location", json_of_location decl.pld_loc);
+        ("attributes", json_of_attributes decl.pld_attributes);
+    ])
+
+let json_of_ctor_args = function
+| Pcstr_tuple(tys) -> json_of_list json_of_core_type tys
+| Pcstr_record(ls) -> json_of_list json_of_label_decl ls
+
+let json_of_extension_constructor_kind = function
+| Pext_decl(args, ty) -> variant "Decl" @@ Array([
+                                               json_of_ctor_args args;
+                                               json_of_option json_of_core_type ty;
+                                           ])
+| Pext_rebind(id) -> variant "Rebind" @@ json_of_loc json_of_long_ident id
+
+let json_of_extension_constructor (ctor: extension_constructor) =
+    Object([
+        ("name", json_of_loc json_of_string ctor.pext_name);
+        ("kind", json_of_extension_constructor_kind ctor.pext_kind);
+        ("location", json_of_location ctor.pext_loc);
+        ("attributes", json_of_attributes ctor.pext_attributes);
     ])
 
 let json_of_rec_flag = function
@@ -341,11 +383,10 @@ and json_of_expression_desc = function
 | Pexp_variant(_, _) -> failwith "TODO Variant"
 (* | Pexp_variant of Asttypes.label * expression option *)
 | Pexp_record(vs, eo) -> variant "Record" @@ Array ([
-                                                 let helper (n, e) = Array([
+                                                 (let helper (n, e) = Array([
                                                      json_of_loc json_of_long_ident n;
                                                      json_of_expression e;
-                                                 ]) in
-                                                 json_of_list helper vs;
+                                                 ]) in json_of_list helper vs);
                                                  json_of_option json_of_expression eo;
                                              ])
 (* | Pexp_record of (Longident.t Asttypes.loc * expression) list * expression option *)
@@ -440,9 +481,8 @@ let json_of_value_binding (b: value_binding) : json =
 let json_of_type_declaration (d: type_declaration) : json =
     Object([
         ("name", json_of_loc json_of_string d.ptype_name);
-        let helper (ct, v) = Array([json_of_core_type ct; json_of_variance v])
-        in ("params", json_of_list helper d.ptype_params);
-        ("ppparamsss", Null);
+        (let helper (ct, v) = Array([json_of_core_type ct; json_of_variance v])
+        in ("params", json_of_list helper d.ptype_params));
       (*ptype_params : (core_type * Asttypes.variance) list;*)
         (*("cstrs", failwith "TODO");*)
       (*ptype_cstrs : (core_type * core_type * Location.t) list;*)
@@ -466,7 +506,10 @@ let json_of_open_description (o: open_description) : json =
     ])
 
 let json_of_structure_item_desc = function
-| Pstr_eval(e, a) -> failwith "Pstr_eval"
+| Pstr_eval(e, a) -> variant "Eval" @@ Array([
+                         json_of_expression e;
+                         json_of_attributes a;
+                     ])
 | Pstr_value(r, bs) -> variant "Value" @@ Array([
                            json_of_rec_flag r;
                            json_of_list json_of_value_binding bs;
@@ -480,7 +523,9 @@ let json_of_structure_item_desc = function
                       ])
 (*
 | Pstr_typext of type_extension
-| Pstr_exception of extension_constructor
+*)
+| Pstr_exception(c) -> variant "Exception" @@ json_of_extension_constructor c
+(*
 | Pstr_module of module_binding
 | Pstr_recmodule of module_binding list
 | Pstr_modtype of module_type_declaration
@@ -511,11 +556,19 @@ let json_of_structure (s: structure) : json =
 (********************************** TOPLEVEL **********************************)
 (*****************************************************************************)
 
-(* TODO json_of_directive_argument *)
+let json_of_directive_argument = function
+| Pdir_none -> variant "None" @@ Null
+| Pdir_string(s) -> variant "String" @@ String(s)
+| Pdir_int(c, s) -> failwith "Pdir_int"
+| Pdir_ident(i) -> variant "Ident" @@ json_of_long_ident i
+| Pdir_bool(b) -> variant "Bool" @@ Bool(b)
 
 let json_of_toplevel_phrase = function
 | Ptop_def(s) -> variant "Def" @@ json_of_structure s
-| Ptop_dir(n, a) -> failwith "Ptop_dir"
+| Ptop_dir(n, a) -> variant "Dir" @@ Array([
+                        json_of_string n;
+                        json_of_directive_argument a;
+                    ])
 
 (*****************************************************************************)
 (******************************* PARSE FUNCTION ******************************)

@@ -9,16 +9,12 @@ repository = "https://github.umn.edu/ringo025/extlint"
 version = "0.1.0"
 
 [dependencies]
-clap = "2.29.2" # TODO https://github.com/rust-lang/cargo/issues/1982
+failure = "0.1.1"
+failure_derive = "0.1.1"
 serde = "1.0.27"
 serde_derive = "1.0.27"
 serde_json = "1.0.9"
-sparkly = "0.1.4"
 
 [build-dependencies]
 cc = "1.0.4"
 lazy_static = "1.0.0"
-
-[[bin]]
-name = "json_of_ocaml"
-path = "src/bin/json_of_ocaml.rs"

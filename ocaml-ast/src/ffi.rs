@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString, NulError};
+use std::ffi::{CStr, CString};
 use std::mem::{forget, zeroed};
 use std::os::raw::{c_char, c_int};
 use std::ptr::null;
@@ -11,7 +11,7 @@ union out_data {
 
 #[link(name = "ocaml_ast", kind = "static")]
 extern "C" {
-    fn ocaml_ast_init(exec_name: *const c_char) -> c_int;
+    pub fn ocaml_ast_init() -> c_int;
 
     fn ocaml_ast_parse(
         src: *const c_char,
@@ -20,42 +20,17 @@ extern "C" {
     ) -> c_int;
 }
 
-pub fn init(s: &str) -> Result<bool, NulError> {
-    let cstr = CString::new(s)?;
-    let raw = cstr.into_raw();
-
-    let ret = unsafe { ocaml_ast_init(raw) };
-    match ret {
-        0 => Ok(true),
-        1 => {
-            let cstr = unsafe { CString::from_raw(raw) };
-            drop(cstr);
-            Ok(false)
-        }
-        n => panic!("Unexpected return value from ocaml_ast_init: {}", n),
-    }
-}
-
 pub fn parse(
-    src: &str,
+    src: &[u8],
     filename: Option<&str>,
 ) -> Result<String, &'static str> {
-    let src = CString::new(src).unwrap(); // TODO Handle error
-    let filename = filename.map(|f| {
-        CString::new(f).unwrap() // TODO Handle error
-    });
+    // Convert src and filename to be *const [i8] and Option<*const [i8]>,
+    // respectively.
+    let src = src.as_ptr() as *const i8;
+    let filename = filename.map(|f| f.as_ptr()).unwrap_or(null()) as *const i8;
 
     let mut out_data: out_data = unsafe { zeroed() };
-    let ret = {
-        let filename = match filename.as_ref() {
-            Some(f) => f.as_ptr(),
-            None => null(),
-        };
-        unsafe { ocaml_ast_parse(src.as_ptr(), filename, &mut out_data) }
-    };
-
-    drop(src);
-    drop(filename);
+    let ret = unsafe { ocaml_ast_parse(src, filename, &mut out_data) };
 
     match ret {
         0 => {

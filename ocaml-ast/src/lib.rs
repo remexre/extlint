@@ -8,6 +8,9 @@
 //! string across the AST boundary. It's not ideal...
 // #![warn(missing_docs)]
 
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 #[macro_use]
 extern crate serde_derive;
 #[cfg_attr(test, macro_use)]
@@ -33,23 +36,33 @@ pub use ast_misc::*;
 pub use ast_module::*;
 pub use ast_toplevel::*;
 
+/// Errors returned from this crate.
+#[derive(Debug, Fail)]
+pub enum OcamlAstError {
+    #[fail(display = "couldn't initialize the OCaml runtime: code {}", code)]
+    InitBadReturn { code: isize },
+}
+
+pub fn init() -> Result<bool, OcamlAstError> {
+    let ret = unsafe { ffi::ocaml_ast_init() };
+    match ret {
+        0 => Ok(true),
+        1 => Ok(false),
+        // This makes the assumption that sizeof(int) <= sizeof(void*).
+        n => Err(OcamlAstError::InitBadReturn { code: n as isize }),
+    }
+}
+
 /// The main parser function.
 ///
 /// TODO: Use a real error type.
 pub fn parse(
-    src: &str,
+    src: &[u8],
     filename: Option<&str>,
 ) -> Result<Vec<ToplevelPhrase>, String> {
-    ffi::init("ocaml_ast").expect("Failed to initialize OCaml");
-
     let mut ast: Vec<ToplevelPhrase> = ffi::parse(src, filename)
         .map_err(String::from)
         .and_then(|json| {
-            let json = serde_json::to_string_pretty(
-                &serde_json::from_str::<serde_json::Value>(&json)
-                    .expect("Syntax error from OCaml"),
-            ).expect("Failed to serialize JSON");
-            println!("{}", json);
             serde_json::from_str(&json).map_err(|e| e.to_string())
         })?;
     ast.retain(|tlp| match *tlp {
@@ -64,7 +77,7 @@ pub fn parse(
 #[serde(tag = "type", content = "value")]
 pub enum Constant {
     /// An integer with a possible suffix.
-    Int(String, Option<char>),
+    Integer(String, Option<char>),
 
     /// A character.
     Char(char),

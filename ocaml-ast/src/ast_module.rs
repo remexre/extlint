@@ -47,7 +47,9 @@ pub struct StructureItem {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "value")]
 pub enum StructureItemDesc {
-    // Eval,
+    /// The evaluation of an expression.
+    Eval(Expression, Attributes),
+
     /// A definition, like `let x = 5`.
     ///
     /// The flag is true for a `let rec`.

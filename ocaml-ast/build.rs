@@ -50,7 +50,7 @@ fn compile_ocaml(base: &str) -> PathBuf {
     println!("cargo:rerun-if-changed={}", src_file);
     let obj_file = format!("{}/{}.o", *OUT_DIR, base);
 
-    let status = Command::new("ocamlfind")
+    let output = Command::new("ocamlfind")
         .arg("ocamlopt")
         .arg("-linkpkg")
         .arg("-o")
@@ -59,10 +59,13 @@ fn compile_ocaml(base: &str) -> PathBuf {
         .arg("-package")
         .arg("compiler-libs.common")
         .arg(src_file)
-        .status()
+        .output()
         .unwrap();
-    if !status.success() {
-        exit(status.code().unwrap_or(1))
+    for line in String::from_utf8_lossy(&output.stderr).split("\n") {
+        println!("cargo:warning={}", line);
+    }
+    if !output.status.success() {
+        exit(output.status.code().unwrap_or(1))
     }
 
     PathBuf::from(obj_file)

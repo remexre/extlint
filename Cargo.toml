@@ -1,4 +1,5 @@
 [workspace]
 members = [
+	"json_of_ocaml",
 	"ocaml-ast",
 ]
