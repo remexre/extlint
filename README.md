@@ -1,5 +1,8 @@
 # extlint
 
+[![Build Status](https://travis-ci.org/remexre/extlint.svg?branch=master)](https://travis-ci.org/remexre/extlint)
+[![Dependency Status](https://deps.rs/repo/github/remexre/extlint/status.svg)](https://deps.rs/repo/github/remexre/extlint)
+
 An extensible linter for OCaml programs.
 Designed to be used as part of the grading infrastructure for CSCI2041.
 
@@ -11,7 +14,7 @@ Currently, only tested on Linux systems.
 May work on macOS, but no guarantees are made.
 
 Requires a working Rust installation, which can be obtained with [rustup](https://rustup.rs/).
-Requires an installation of OCaml, OPAM, findlib, and ocaml-compiler-libs.
+Requires an installation of OCaml, OPAM, ocamlfind, and ocaml-compiler-libs.
 Requires a C compiler.
 
 [just](https://github.com/casey/just) is recommended, and will be used in the instructions here.

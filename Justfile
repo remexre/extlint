@@ -14,6 +14,15 @@ test:
 test-static:
 	cargo test --all {{static_flags}} --release
 
+package: build
+	tar czvf extlint.tar.gz \
+		target/release/get-gitgrade-repos \
+		target/release/json_of_ocaml
+package-static: build-static
+	tar czvf extlint.tar.gz \
+		target/x86_64-unknown-linux-musl/release/get-gitgrade-repos \
+		target/x86_64-unknown-linux-musl/release/json_of_ocaml
+
 test-on-previous-class CLASS: build
 	@mkdir -p test-data/{{CLASS}}
 	tar -zxf /class/grades/Spring-2018/csci2041/extlint-test-data/{{CLASS}}.tar.gz -C test-data/{{CLASS}}
@@ -28,7 +37,9 @@ privileged-tests: test-on-student-repos
 
 # This target is used for CI builds; you probably don't want to call it yourself!
 travis-ci:
-	opam switch 4.06.0 --no-switch
-	opam switch 4.06.0+musl+static+flambda --no-switch
-	opam --switch 4.06.0 install ocaml-compiler-libs
-	opam --switch 4.06.0+musl+static+flambda install ocaml-compiler-libs
+	opam init
+	eval `opam config env`
+	opam switch 4.06.0+musl+static+flambda
+	eval `opam config env`
+	opam install ocamlfind ocaml-compiler-libs
+	just build-static test-static package-static
