@@ -1,5 +1,9 @@
 language: generic
 services: docker
+addons:
+  apt:
+    packages:
+    - docker-ce
 os: linux
 
 before_install:
