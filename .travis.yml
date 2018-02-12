@@ -24,7 +24,7 @@ install:
   - make all install
   - popd
   # Install just
-  - cargo install just
+  - just --version || cargo install just
   # Install OCaml
   - opam init -a
   - eval `opam config env`
