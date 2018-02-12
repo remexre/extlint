@@ -32,7 +32,7 @@ install:
   - eval `opam config env`
   - opam install ocamlfind ocaml-compiler-libs -y
   # Install the musl Rust toolchain
-  - rustup toolchain add x86_64-unknown-linux-musl
+  - rustup target add x86_64-unknown-linux-musl
 
 script:
   - just build-static test-static package-static
