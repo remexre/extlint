@@ -25,7 +25,7 @@ install:
   - eval `opam config env`
   - opam switch 4.06.0+musl+static+flambda
   - eval `opam config env`
-  - opam install ocamlfind ocaml-compiler-libs
+  - opam install ocamlfind ocaml-compiler-libs -y
 
 script:
   - just build-static test-static package-static
