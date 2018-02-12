@@ -3,9 +3,13 @@ addons:
   apt:
     sources:
     - avsm
+    - ubuntu-toolchain-r-test
     packages:
+    - gcc-7
     - ocaml
     - opam
+env:
+- CC=gcc-7
 rust: stable
 os: linux
 
