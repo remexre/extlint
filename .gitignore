@@ -1,9 +1,13 @@
 .*
 *~
 !.gitignore
+!.travis.yml
 
+dist/
 target/
 test-data/
+
+/extlint.tar.gz
 
 *.cmi
 *.cmx

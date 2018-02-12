@@ -1,0 +1,31 @@
+language: rust
+addons:
+  apt:
+    sources:
+    - avsm
+    packages:
+    - ocaml
+    - opam
+rust: stable
+os: linux
+
+install:
+  # Install musl
+  - mkdir -p /tmp/musl
+  - pushd /tmp/musl
+  - curl https://www.musl-libc.org/releases/musl-1.1.18.tar.gz | tar zx
+  - cd musl-1.1.18
+  - ./configure --disable-shared --enable-optimize=yes --enable-warnings --enable-wrapper=all --prefix=$HOME/.local
+  - make all install
+  - popd
+  # Install just
+  - cargo install just
+  # Install OCaml
+  - opam init -a
+  - eval `opam config env`
+  - opam switch 4.06.0+musl+static+flambda
+  - eval `opam config env`
+  - opam install ocamlfind ocaml-compiler-libs
+
+script:
+  - just build-static test-static package-static

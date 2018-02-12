@@ -1,5 +1,3 @@
-all: test
-
 static_flags = "--target x86_64-unknown-linux-musl"
 
 build:
@@ -9,19 +7,27 @@ build-static:
 
 build-all: build build-static
 
+clean:
+	cargo clean
+	if test -d dist; then rm -r dist; fi
+	if test -d test-data; then rm -rf test-data; fi
+	if test -f extlint.tar.gz; then rm extlint.tar.gz; fi
+
 test:
 	cargo test --all --release
 test-static:
 	cargo test --all {{static_flags}} --release
 
 package: build
-	tar czvf extlint.tar.gz \
-		target/release/get-gitgrade-repos \
-		target/release/json_of_ocaml
+	mkdir -p dist/bin
+	cp target/release/get-gitgrade-repos dist/bin/get-gitgrade-repos
+	cp target/release/json_of_ocaml dist/bin/json_of_ocaml
+	tar -czf extlint.tar.gz -C dist bin
 package-static: build-static
-	tar czvf extlint.tar.gz \
-		target/x86_64-unknown-linux-musl/release/get-gitgrade-repos \
-		target/x86_64-unknown-linux-musl/release/json_of_ocaml
+	mkdir -p dist/bin
+	install -s target/x86_64-unknown-linux-musl/release/get-gitgrade-repos dist/bin
+	install -s target/x86_64-unknown-linux-musl/release/json_of_ocaml dist/bin
+	tar -czf extlint.tar.gz -C dist bin
 
 test-on-previous-class CLASS: build
 	@mkdir -p test-data/{{CLASS}}
@@ -30,16 +36,5 @@ test-on-previous-class CLASS: build
 test-on-student-repos: build
 	target/release/get-gitgrade-repos test-data/repos --grading-scripts test-data/grading-scripts
 	find test-data/repos -name '*.ml' -exec target/release/json_of_ocaml -s {} \;
-
-unprivileged-tests: test test-static
 privileged-tests: test-on-student-repos
 	just test-on-previous-class S17
-
-# This target is used for CI builds; you probably don't want to call it yourself!
-travis-ci:
-	opam init
-	eval `opam config env`
-	opam switch 4.06.0+musl+static+flambda
-	eval `opam config env`
-	opam install ocamlfind ocaml-compiler-libs
-	just build-static test-static package-static
