@@ -9,6 +9,11 @@ addons:
 rust: stable
 os: linux
 
+cache:
+  directories:
+  - $HOME/.cargo
+  - $HOME/.opam
+
 install:
   # Install musl
   - mkdir -p /tmp/musl
@@ -23,7 +28,7 @@ install:
   # Install OCaml
   - opam init -a
   - eval `opam config env`
-  - opam switch 4.06.0+musl+static+flambda
+  - travis_wait opam switch 4.06.0+musl+static+flambda
   - eval `opam config env`
   - opam install ocamlfind ocaml-compiler-libs -y
 
