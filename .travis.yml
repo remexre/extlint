@@ -17,3 +17,11 @@ script:
 - docker cp extlint-build:/code/extlint.tar.gz extlint.tar.gz
 after_script:
 - docker stop -t 1 extlint-build
+
+deploy:
+  provider: releases
+  api_key: $GITHUB_TOKEN
+  file: extlint.tar.gz
+  skip_cleanup: true
+  on:
+    tags: true
