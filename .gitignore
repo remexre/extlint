@@ -2,8 +2,8 @@
 *~
 !.gitignore
 
-repos/
 target/
+test-data/
 
 *.cmi
 *.cmx

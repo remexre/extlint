@@ -29,6 +29,7 @@ mod grading_scripts;
 mod utils;
 
 use std::path::PathBuf;
+use std::process::exit;
 
 use failure::Error;
 use futures::{Future, Stream};
@@ -74,10 +75,9 @@ fn main() {
 
     // Start the "real" main.
     match run(repo_dir, github_url, grading_scripts_dir) {
-        Ok(()) => {}
+        Ok(0) => {}
+        Ok(n) => exit(n),
         Err(err) => if log_enabled!(log::Level::Error) {
-            use std::process::exit;
-
             for err in err.causes() {
                 error!("{}", err);
             }
@@ -92,7 +92,7 @@ fn run(
     repo_dir: PathBuf,
     github_url: String,
     grading_scripts_dir: PathBuf,
-) -> Result<(), Error> {
+) -> Result<i32, Error> {
     let mut core = Core::new()?;
     let student_uiids =
         get_student_uiids(&github_url, grading_scripts_dir, &mut core)?;
@@ -123,7 +123,7 @@ fn run(
                 if err != 0 {
                     warn!("{} repos could not be cloned.", err);
                 }
-                Ok(())
+                Ok(err)
             }),
     )
 }

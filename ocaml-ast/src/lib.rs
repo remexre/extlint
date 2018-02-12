@@ -28,6 +28,10 @@ mod ffi;
 #[cfg(test)]
 mod tests;
 
+use std::ffi::{CStr, CString};
+use std::mem::{forget, zeroed};
+use std::ptr::null;
+
 pub use ast_class::*;
 pub use ast_core::*;
 pub use ast_extension::*;
@@ -39,8 +43,15 @@ pub use ast_toplevel::*;
 /// Errors returned from this crate.
 #[derive(Debug, Fail)]
 pub enum OcamlAstError {
-    #[fail(display = "couldn't initialize the OCaml runtime: code {}", code)]
-    InitBadReturn { code: isize },
+    #[fail(display = "unexpected return value from the OCaml runtime: code {}", _0)]
+    BadReturn(isize),
+
+    #[fail(display = "ocaml-ast was compiled without the {} function. Report this as a bug!", _0)]
+    MissingOCamlFunction(&'static str),
+
+    #[fail(display = "{}", _0)]
+    SerdeJson(#[cause] serde_json::Error),
+
 }
 
 pub fn init() -> Result<bool, OcamlAstError> {
@@ -49,7 +60,7 @@ pub fn init() -> Result<bool, OcamlAstError> {
         0 => Ok(true),
         1 => Ok(false),
         // This makes the assumption that sizeof(int) <= sizeof(void*).
-        n => Err(OcamlAstError::InitBadReturn { code: n as isize }),
+        n => Err(OcamlAstError::BadReturn(n as isize)),
     }
 }
 
@@ -59,12 +70,45 @@ pub fn init() -> Result<bool, OcamlAstError> {
 pub fn parse(
     src: &[u8],
     filename: Option<&str>,
-) -> Result<Vec<ToplevelPhrase>, String> {
-    let mut ast: Vec<ToplevelPhrase> = ffi::parse(src, filename)
-        .map_err(String::from)
-        .and_then(|json| {
-            serde_json::from_str(&json).map_err(|e| e.to_string())
-        })?;
+) -> Result<Vec<ToplevelPhrase>, OcamlAstError> {
+    init()?;
+
+    // Convert src and filename to both be *const [i8] respectively.
+    let src_len = src.len();
+    let src = src.as_ptr() as *const i8;
+    let path_len = filename.map(|f| f.len()).unwrap_or(0);
+    let path = filename.map(|f| f.as_ptr() as *const i8).unwrap_or(null());
+
+    let mut out_data = unsafe { zeroed() };
+    let ret = unsafe {
+        ffi::ocaml_ast_parse(src, src_len, path, path_len, &mut out_data)
+    };
+
+    let json = match ret {
+        0 => {
+            let s = unsafe { out_data.success };
+            assert!(!s.is_null());
+            let s = unsafe { CString::from_raw(s) };
+            s.into_string().unwrap() // TODO Handle error
+        }
+        1 => {
+            let s = unsafe { out_data.missing_value };
+            assert!(!s.is_null());
+            let s = unsafe { CStr::from_ptr::<'static>(s) };
+            let s = s.to_str().unwrap(); // TODO Handle error
+            return Err(OcamlAstError::MissingOCamlFunction(s));
+        }
+        n => {
+            // out_data shouldn't have a destructor, but there's no harm to
+            // being extra-safe.
+            forget(out_data);
+
+            return Err(OcamlAstError::BadReturn(n as isize));
+        }
+    };
+
+    let mut ast: Vec<ToplevelPhrase> =
+        serde_json::from_str(&json).map_err(OcamlAstError::SerdeJson)?;
     ast.retain(|tlp| match *tlp {
         ToplevelPhrase::Def(ref s) => !s.is_empty(),
         _ => true,

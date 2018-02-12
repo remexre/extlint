@@ -1,3 +1,4 @@
+use ast_misc::LongIdent;
 use ast_module::Structure;
 
 /// An entry at the top level.
@@ -16,5 +17,8 @@ pub enum ToplevelPhrase {
 #[serde(tag = "type", content = "value")]
 pub enum DirectiveArgument {
     None,
-    // TODO
+    String(String),
+    // | Pdir_int(c, s) -> failwith "Pdir_int"
+    Ident(LongIdent),
+    Bool(bool),
 }

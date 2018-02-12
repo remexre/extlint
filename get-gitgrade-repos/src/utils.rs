@@ -28,17 +28,15 @@ impl Future for CloneOrPullFuture {
         match self.inner.poll() {
             Ok(Async::Ready(_)) => Ok(Async::Ready(self.path.take().unwrap())),
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(err) => Err(
-                err.context({
-                    let path = self.path.take().unwrap();
-                    let path = path.display();
-                    if let Some(url) = self.url.take() {
-                        format!("When cloning {} into {}", url, path)
-                    } else {
-                        format!("When pulling {}", path)
-                    }
-                }).into(),
-            ),
+            Err(err) => Err(err.context({
+                let path = self.path.take().unwrap();
+                let path = path.display();
+                if let Some(url) = self.url.take() {
+                    format!("When cloning {} into {}", url, path)
+                } else {
+                    format!("When pulling {}", path)
+                }
+            }).into()),
         }
     }
 }
@@ -88,11 +86,9 @@ impl Future for RunCommandFuture {
             } else {
                 let stderr =
                     String::from_utf8_lossy(&output.stderr).to_string();
-                Err(
-                    format_err!("Exited with status {}", output.status)
-                        .context(stderr)
-                        .into(),
-                )
+                Err(format_err!("Exited with status {}", output.status)
+                    .context(stderr)
+                    .into())
             },
             Ok(Async::NotReady) => Ok(Async::NotReady),
             Err(err) => Err(err.into()),

@@ -24,12 +24,12 @@ macro_rules! serde_tests {
 }
 
 serde_tests!(Constant, constant_serialize, constant_deserialize,
-    (Constant::Int("42".to_string(), None), {
-        "type": "Int",
+    (Constant::Integer("42".to_string(), None), {
+        "type": "Integer",
         "value": ["42", null],
     }),
-    (Constant::Int("42".to_string(), Some('L')), {
-        "type": "Int",
+    (Constant::Integer("42".to_string(), Some('L')), {
+        "type": "Integer",
         "value": ["42", "L"],
     }),
 
