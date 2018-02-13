@@ -1,4 +1,4 @@
-use ast_core::{Expression, Pattern, TypeDeclaration};
+use ast_core::{Expression, ExtensionConstructor, Pattern, TypeDeclaration};
 use ast_extension::Attributes;
 use ast_locations::{Loc, Location};
 use ast_misc::LongIdent;
@@ -18,8 +18,7 @@ pub struct ModuleTypeDeclaration;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OpenDescription {
     pub id: Loc<LongIdent>,
-    #[serde(rename = "override")]
-    pub override_: bool,
+    #[serde(rename = "override")] pub override_: bool,
     pub location: Location,
     pub attributes: Attributes,
 }
@@ -61,12 +60,15 @@ pub enum StructureItemDesc {
     Type(bool, Vec<TypeDeclaration>),
 
     // TypeExt,
-    // Exception,
+    /// The declaration of an exception.
+    Exception(ExtensionConstructor),
+
     // Module,
     // RecModule,
     // ModType,
     /// An open statement.
     Open(OpenDescription),
+
     // Class,
     // ClassType,
     // Include,

@@ -4,6 +4,7 @@ extern crate ocaml_ast;
 extern crate serde_json;
 
 use std::io::Error as IoError;
+use std::process::exit;
 
 use ocaml_ast::parse;
 
@@ -18,11 +19,15 @@ fn main() {
 
     let file = matches.value_of("FILE");
     let src = read_from(file).unwrap_or_else(|err| {
-        panic!("Couldn't read from {}: {}", file.unwrap_or("stdin"), err)
+        eprintln!("Couldn't read from {}", file.unwrap_or("stdin"));
+        eprintln!("{}", err);
+        exit(1);
     });
 
     let ast = parse(&src, file).unwrap_or_else(|err| {
-        panic!("Couldn't parse {}: {}", file.unwrap_or("stdin"), err)
+        eprintln!("Couldn't parse {}", file.unwrap_or("stdin"));
+        eprintln!("{}", err);
+        exit(1);
     });
 
     if !matches.is_present("SILENT") {

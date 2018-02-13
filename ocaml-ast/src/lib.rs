@@ -8,6 +8,7 @@
 //! string across the AST boundary. It's not ideal...
 // #![warn(missing_docs)]
 
+extern crate either;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
@@ -18,6 +19,7 @@ extern crate serde_json;
 
 mod ast_class;
 mod ast_core;
+mod ast_errors;
 mod ast_extension;
 mod ast_locations;
 mod ast_misc;
@@ -34,6 +36,7 @@ use std::ptr::null;
 
 pub use ast_class::*;
 pub use ast_core::*;
+pub use ast_errors::*;
 pub use ast_extension::*;
 pub use ast_locations::*;
 pub use ast_misc::*;
@@ -50,8 +53,10 @@ pub enum OcamlAstError {
     MissingOCamlFunction(&'static str),
 
     #[fail(display = "{}", _0)]
-    SerdeJson(#[cause] serde_json::Error),
+    OcamlParse(#[cause] OcamlParseError),
 
+    #[fail(display = "{}", _0)]
+    SerdeJson(#[cause] serde_json::Error),
 }
 
 pub fn init() -> Result<bool, OcamlAstError> {

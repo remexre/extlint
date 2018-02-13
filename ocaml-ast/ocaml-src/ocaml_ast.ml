@@ -311,8 +311,8 @@ let json_of_label_decl (decl: label_declaration) =
     ])
 
 let json_of_ctor_args = function
-| Pcstr_tuple(tys) -> json_of_list json_of_core_type tys
-| Pcstr_record(ls) -> json_of_list json_of_label_decl ls
+| Pcstr_tuple(tys) -> variant "Tuple" @@ json_of_list json_of_core_type tys
+| Pcstr_record(ls) -> variant "Record" @@ json_of_list json_of_label_decl ls
 
 let json_of_extension_constructor_kind = function
 | Pext_decl(args, ty) -> variant "Decl" @@ Array([
@@ -553,7 +553,7 @@ let json_of_structure (s: structure) : json =
 (* TODO json_of_module_binding *)
 
 (*****************************************************************************)
-(********************************** TOPLEVEL **********************************)
+(********************************** TOPLEVEL *********************************)
 (*****************************************************************************)
 
 let json_of_directive_argument = function
@@ -571,17 +571,81 @@ let json_of_toplevel_phrase = function
                     ])
 
 (*****************************************************************************)
+(******************************* ERROR HANDLING ******************************)
+(*****************************************************************************)
+
+let json_of_lexer_error = function
+| _ -> failwith "TODO Lexer Error"
+
+let json_of_syntax_error = function
+| Syntaxerr.Unclosed(la, sa, lb, sb) ->
+    variant "Unclosed" @@ Array([
+        json_of_location la;
+        json_of_string sa;
+        json_of_location lb;
+        json_of_string sb;
+    ])
+| Syntaxerr.Expecting(loc, str) ->
+    variant "Expecting" @@ Array([
+        json_of_location loc;
+        json_of_string str;
+    ])
+| Syntaxerr.Not_expecting(loc, str) ->
+    variant "NotExpecting" @@ Array([
+        json_of_location loc;
+        json_of_string str;
+    ])
+| Syntaxerr.Applicative_path(loc) -> variant "ApplicativePath" @@ json_of_location loc
+| Syntaxerr.Variable_in_scope(loc, str) ->
+    variant "VariableInScope" @@ Array([
+        json_of_location loc;
+        json_of_string str;
+    ])
+| Syntaxerr.Other(loc) -> variant "Other" @@ json_of_location loc
+| Syntaxerr.Ill_formed_ast(loc, str) ->
+    variant "IllFormedAst" @@ Array([
+        json_of_location loc;
+        json_of_string str;
+    ])
+| Syntaxerr.Invalid_package_type(loc, str) ->
+    variant "InvalidPackageType" @@ Array([
+        json_of_location loc;
+        json_of_string str;
+    ])
+
+(*****************************************************************************)
 (******************************* PARSE FUNCTION ******************************)
 (*****************************************************************************)
 
-let parse (src: string) (path: string): string =
+let json_of_ocaml (src: string) (path: string) : json =
     let buf = Lexing.from_string src in
     buf.lex_start_p <- { buf.lex_start_p with pos_fname = path };
     buf.lex_curr_p <- { buf.lex_curr_p with pos_fname = path };
     buf
     |> Parse.use_file
     |> json_of_list json_of_toplevel_phrase
-    |> string_of_json
+
+let parse (src: string) (path: string) : string =
+    let json =
+        try
+            Object([
+                ("Ok", json_of_ocaml src path);
+            ])
+        with
+            | Lexer.Error(err, loc) ->
+                Object([
+                    ("Err", variant "Lexer" @@ Array([
+                        json_of_lexer_error err;
+                        json_of_location loc;
+                    ]))
+                ])
+            | Syntaxerr.Error(err) ->
+                Object([
+                    ("Err", variant "Syntax" @@ json_of_syntax_error err)
+                ])
+            | _ -> failwith "TODO"
+    in
+    string_of_json json
 
 (* Register the parse function to be callable from C. *)
 let () =
