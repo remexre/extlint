@@ -18,7 +18,8 @@ pub struct ModuleTypeDeclaration;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OpenDescription {
     pub id: Loc<LongIdent>,
-    #[serde(rename = "override")] pub override_: bool,
+    #[serde(rename = "override")]
+    pub override_: bool,
     pub location: Location,
     pub attributes: Attributes,
 }
@@ -68,7 +69,6 @@ pub enum StructureItemDesc {
     // ModType,
     /// An open statement.
     Open(OpenDescription),
-
     // Class,
     // ClassType,
     // Include,

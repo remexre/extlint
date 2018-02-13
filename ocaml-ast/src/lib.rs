@@ -8,10 +8,14 @@
 //! string across the AST boundary. It's not ideal...
 // #![warn(missing_docs)]
 
+#[cfg(feature = "ansi_term")]
+extern crate ansi_term;
 extern crate either;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
+#[macro_use]
+extern crate lazy_static;
 #[macro_use]
 extern crate serde_derive;
 #[cfg_attr(test, macro_use)]
@@ -26,6 +30,7 @@ mod ast_misc;
 mod ast_module;
 mod ast_toplevel;
 mod ffi;
+mod message;
 
 #[cfg(test)]
 mod tests;
@@ -42,6 +47,7 @@ pub use ast_locations::*;
 pub use ast_misc::*;
 pub use ast_module::*;
 pub use ast_toplevel::*;
+pub use message::*;
 
 /// Errors returned from this crate.
 #[derive(Debug, Fail)]
@@ -59,7 +65,13 @@ pub enum OcamlAstError {
     SerdeJson(#[cause] serde_json::Error),
 }
 
-pub fn init() -> Result<bool, OcamlAstError> {
+impl From<OcamlParseError> for OcamlAstError {
+    fn from(err: OcamlParseError) -> OcamlAstError {
+        OcamlAstError::OcamlParse(err)
+    }
+}
+
+fn init() -> Result<bool, OcamlAstError> {
     let ret = unsafe { ffi::ocaml_ast_init() };
     match ret {
         0 => Ok(true),
@@ -112,8 +124,9 @@ pub fn parse(
         }
     };
 
-    let mut ast: Vec<ToplevelPhrase> =
+    let ast: Result<Vec<ToplevelPhrase>, OcamlParseError> =
         serde_json::from_str(&json).map_err(OcamlAstError::SerdeJson)?;
+    let mut ast = ast?;
     ast.retain(|tlp| match *tlp {
         ToplevelPhrase::Def(ref s) => !s.is_empty(),
         _ => true,

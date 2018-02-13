@@ -1,4 +1,7 @@
+use std::borrow::Cow;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+
+use message::Message;
 
 /// A location-annotated value.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -22,17 +25,18 @@ pub struct Location {
 
 impl Location {
     /// Attaches a message to the Location.
-    pub fn msg<'a>(
-        &'a self,
-        src: &'a str,
-        msg: Option<&'a str>,
-    ) -> Message<'a> {
-        Message {
-            start: (self.start.line, self.start.column),
-            end: Some((self.end.line, self.end.column)),
+    pub fn msg<'a>(&'a self, src: &'a str, msg: Cow<'a, str>) -> Message<'a> {
+        Message::new(
+            (self.start.line, self.start.column),
+            (self.end.line, self.end.column),
             msg,
+            if self.start.filename == "" {
+                None
+            } else {
+                Some(&self.start.filename)
+            },
             src,
-        }
+        )
     }
 }
 
@@ -54,21 +58,6 @@ impl Display for Location {
     }
 }
 
-/// A helper struct for rendering a message attached to a span of source code.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Message<'a> {
-    pub start: (usize, usize),
-    pub end: Option<(usize, usize)>,
-    pub msg: Option<&'a str>,
-    pub src: &'a str,
-}
-
-impl<'a> Display for Message<'a> {
-    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
-        unimplemented!()
-    }
-}
-
 /// A point in source code.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Position {
@@ -87,17 +76,18 @@ pub struct Position {
 
 impl Position {
     /// Attaches a message to the Position.
-    pub fn msg<'a>(
-        &'a self,
-        src: &'a str,
-        msg: Option<&'a str>,
-    ) -> Message<'a> {
-        Message {
-            start: (self.line, self.column),
-            end: None,
+    pub fn msg<'a>(&'a self, src: &'a str, msg: Cow<'a, str>) -> Message<'a> {
+        Message::new(
+            (self.line, self.column),
+            (self.line, self.column + 1),
             msg,
+            if self.filename == "" {
+                None
+            } else {
+                Some(&self.filename)
+            },
             src,
-        }
+        )
     }
 }
 

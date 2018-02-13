@@ -13,6 +13,7 @@ pub fn get_student_uiids(
 ) -> Result<Vec<String>, Error> {
     let clone_url = format!("{}{}", github_url, "grading-scripts.git");
     let handle = core.handle();
+    info!("Pulling grading scripts...");
     core.run(
         clone_or_pull(grading_scripts_dir, clone_url, &handle).and_then(
             |grading_scripts_dir| {

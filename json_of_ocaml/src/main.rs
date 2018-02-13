@@ -6,7 +6,7 @@ extern crate serde_json;
 use std::io::Error as IoError;
 use std::process::exit;
 
-use ocaml_ast::parse;
+use ocaml_ast::{parse, OcamlAstError};
 
 fn main() {
     let matches = clap_app!((crate_name!()) =>
@@ -25,8 +25,16 @@ fn main() {
     });
 
     let ast = parse(&src, file).unwrap_or_else(|err| {
-        eprintln!("Couldn't parse {}", file.unwrap_or("stdin"));
-        eprintln!("{}", err);
+        match err {
+            OcamlAstError::OcamlParse(err) => {
+                let src = String::from_utf8_lossy(&src);
+                eprintln!("{}", err.as_msg(&src));
+            }
+            _ => {
+                eprintln!("Couldn't parse {}", file.unwrap_or("stdin"));
+                eprintln!("{}", err);
+            }
+        }
         exit(1);
     });
 

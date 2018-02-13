@@ -106,6 +106,7 @@ fn run(
             .and_then(|res| {
                 let mut ok = 0;
                 let mut err = 0;
+                info!("Pulling {} repos...", res.len());
                 for r in res {
                     match r {
                         Ok(_) => {
