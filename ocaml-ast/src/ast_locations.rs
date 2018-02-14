@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::max;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
 use message::Message;
@@ -26,9 +27,11 @@ pub struct Location {
 impl Location {
     /// Attaches a message to the Location.
     pub fn msg<'a>(&'a self, src: &'a str, msg: Cow<'a, str>) -> Message<'a> {
+        let start_col = max(self.start.column, 0) as usize;
+        let end_col = max(self.end.column, 0) as usize;
         Message::new(
-            (self.start.line, self.start.column),
-            (self.end.line, self.end.column),
+            (self.start.line, start_col),
+            (self.end.line, end_col),
             msg,
             if self.start.filename == "" {
                 None
@@ -68,18 +71,19 @@ pub struct Position {
     pub line: usize,
 
     /// The column number.
-    pub column: usize,
+    pub column: isize,
 
     /// The position, in characters from the start of the file.
-    pub offset: usize,
+    pub offset: isize,
 }
 
 impl Position {
     /// Attaches a message to the Position.
     pub fn msg<'a>(&'a self, src: &'a str, msg: Cow<'a, str>) -> Message<'a> {
+        let col = max(self.column, 0) as usize;
         Message::new(
-            (self.line, self.column),
-            (self.line, self.column + 1),
+            (self.line, col),
+            (self.line, col + 1),
             msg,
             if self.filename == "" {
                 None

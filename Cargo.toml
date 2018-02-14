@@ -4,3 +4,6 @@ members = [
 	"get-gitgrade-repos",
 	"ocaml-ast",
 ]
+
+[patch.crates-io]
+serde_json = { git = "https://github.com/remexre/json.git" }

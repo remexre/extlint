@@ -27,7 +27,7 @@ pub enum CoreTypeDesc {
     Variant(Vec<RowField>, bool, Option<Vec<String>>),
     Poly(Vec<Loc<String>>, Box<CoreType>),
     Package(Loc<LongIdent>, Vec<(Loc<LongIdent>, CoreType)>),
-    Extension(Extension),
+    Extension(Box<Extension>),
 }
 
 /// A single possiblity in a enumerated type.
@@ -108,7 +108,7 @@ pub enum ExpressionDesc {
     // override
     // letmodule
     // letexception
-    // assert
+    Assert(Box<Expression>),
     // lazy
     // poly
     // object

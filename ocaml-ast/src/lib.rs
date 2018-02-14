@@ -138,12 +138,12 @@ pub fn parse(
     impl From<FfiError> for OcamlAstError {
         fn from(err: FfiError) -> OcamlAstError {
             match err {
-                FfiError::Lexer(err, loc) => OcamlAstError::OcamlParse(
-                    OcamlParseError::Lexer(err, loc)
-                ),
-                FfiError::Syntax(err) => OcamlAstError::OcamlParse(
-                    OcamlParseError::Syntax(err)
-                ),
+                FfiError::Lexer(err, loc) => {
+                    OcamlAstError::OcamlParse(OcamlParseError::Lexer(err, loc))
+                }
+                FfiError::Syntax(err) => {
+                    OcamlAstError::OcamlParse(OcamlParseError::Syntax(err))
+                }
                 FfiError::Other(err) => OcamlAstError::OcamlException(err),
             }
         }

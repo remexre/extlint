@@ -1,5 +1,5 @@
 use ast_core::{Expression, ExtensionConstructor, Pattern, TypeDeclaration};
-use ast_extension::Attributes;
+use ast_extension::{Attribute, Attributes, Extension};
 use ast_locations::{Loc, Location};
 use ast_misc::LongIdent;
 
@@ -9,8 +9,30 @@ pub struct ModuleTypeDesc;
 /// A signature.
 pub type Signature = Vec<SignatureItem>;
 
-pub struct SignatureItem;
-pub struct SignatureItemDesc;
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct SignatureItem {
+    pub desc: SignatureItemDesc,
+    pub location: Location,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value")]
+pub enum SignatureItemDesc {
+    // Value(ValueDescription),
+    // Type(bool, Vec<TypeDeclaration>),
+    // Typext(TypeExtension),
+    // Exception(ExtensionConstructor),
+    // Module(ModuleDeclaration),
+    // Recmodule(Vec<ModuleDeclaration>),
+    // Modtype(ModuleTypeDeclaration),
+    Open(OpenDescription),
+    // Include(IncludeDescription),
+    // Class(Vec<ClassDescription>),
+    // ClassType(Vec<ClassTypeDeclaration>),
+    Attribute(Attribute),
+    Extension(Extension, Attributes),
+}
+
 pub struct ModuleDeclaration;
 pub struct ModuleTypeDeclaration;
 
@@ -18,7 +40,8 @@ pub struct ModuleTypeDeclaration;
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OpenDescription {
     pub id: Loc<LongIdent>,
-    #[serde(rename = "override")] pub override_: bool,
+    #[serde(rename = "override")]
+    pub override_: bool,
     pub location: Location,
     pub attributes: Attributes,
 }
@@ -71,7 +94,8 @@ pub enum StructureItemDesc {
     // Class,
     // ClassType,
     // Include,
-    // Attribute,
+    /// An attribute, usually a doc comment.
+    Attribute(Attribute),
     // Extension,
 }
 
