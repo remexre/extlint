@@ -58,6 +58,9 @@ pub enum OcamlAstError {
     #[fail(display = "ocaml-ast was compiled without the {} function. Report this as a bug!", _0)]
     MissingOCamlFunction(&'static str),
 
+    #[fail(display = "exception from OCaml: {}", _0)]
+    OcamlException(String),
+
     #[fail(display = "{}", _0)]
     OcamlParse(#[cause] OcamlParseError),
 
@@ -124,7 +127,29 @@ pub fn parse(
         }
     };
 
-    let ast: Result<Vec<ToplevelPhrase>, OcamlParseError> =
+    #[derive(Deserialize)]
+    #[serde(tag = "type", content = "value")]
+    enum FfiError {
+        Lexer(LexerError, Location),
+        Other(String),
+        Syntax(SyntaxError),
+    }
+
+    impl From<FfiError> for OcamlAstError {
+        fn from(err: FfiError) -> OcamlAstError {
+            match err {
+                FfiError::Lexer(err, loc) => OcamlAstError::OcamlParse(
+                    OcamlParseError::Lexer(err, loc)
+                ),
+                FfiError::Syntax(err) => OcamlAstError::OcamlParse(
+                    OcamlParseError::Syntax(err)
+                ),
+                FfiError::Other(err) => OcamlAstError::OcamlException(err),
+            }
+        }
+    }
+
+    let ast: Result<Vec<ToplevelPhrase>, FfiError> =
         serde_json::from_str(&json).map_err(OcamlAstError::SerdeJson)?;
     let mut ast = ast?;
     ast.retain(|tlp| match *tlp {

@@ -53,7 +53,7 @@ pub struct Pattern {
 pub enum PatternDesc {
     Any,
     Var(Loc<String>),
-    // alias
+    Alias(Box<Pattern>, Loc<String>),
     Constant(Constant),
     // interval
     Tuple(Vec<Pattern>),

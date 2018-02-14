@@ -181,29 +181,32 @@ let json_of_constant = function
 (****************************** EXTENSION POINTS *****************************)
 (*****************************************************************************)
 
-let json_of_attribute ((name, payload): attribute) : json =
-    failwith "TODO json_of_attribute"
+let rec json_of_payload = function
+| PStr(s) -> variant "Structure" @@ failwith "PStr"
+| PSig(s) -> variant "Signature" @@ failwith "PSig"
+| PTyp(s) -> variant "Type" @@ json_of_core_type s
+| PPat(p, e) -> variant "Pattern" @@ Array([
+                    json_of_pattern p;
+                    json_of_option json_of_expression e;
+                ])
 
-let json_of_attributes (attrs: attributes) : json =
+and json_of_attribute (attr: attribute) =
+    json_of_pair (json_of_loc json_of_string) json_of_payload attr
+
+and json_of_attributes (attrs: attributes) : json =
     json_of_list json_of_attribute attrs
 
 (* TODO json_of_extension *)
 
-let json_of_override_flag = function
+and json_of_override_flag = function
 | Override -> Bool(true)
 | Fresh -> Bool(false)
-
-let json_of_payload = function
-| PStr(s) -> failwith "PStr"
-| PSig(s) -> failwith "PSig"
-| PTyp(s) -> failwith "PTyp"
-| PPat(p, e) -> failwith "PPat"
 
 (*****************************************************************************)
 (******************************** CORE LANGUAGE ******************************)
 (*****************************************************************************)
 
-let rec json_of_core_type (ct: core_type) : json =
+and json_of_core_type (ct: core_type) : json =
     Object([
         ("desc", json_of_core_type_desc ct.ptyp_desc);
         ("location", json_of_location ct.ptyp_loc);
@@ -234,7 +237,7 @@ and json_of_core_type_desc = function
 | Ptyp_package(e) -> failwith "TODO Package"
 | Ptyp_extension(e) -> failwith "TODO Extension"
 
-let rec json_of_pattern_desc = function
+and json_of_pattern_desc = function
 | Ppat_any -> variant "Any" Null
 | Ppat_var(n) -> variant "Var" @@ json_of_loc json_of_string n
 | Ppat_alias(p, n) ->
@@ -297,11 +300,11 @@ and json_of_pattern (pat: pattern) : json =
         ("attributes", json_of_attributes pat.ppat_attributes);
     ])
 
-let json_of_mutable_flag = function
+and json_of_mutable_flag = function
 | Immutable -> Bool(false)
 | Mutable -> Bool(true)
 
-let json_of_label_decl (decl: label_declaration) =
+and json_of_label_decl (decl: label_declaration) =
     Object([
         ("name", json_of_loc json_of_string decl.pld_name);
         ("mutable", json_of_mutable_flag decl.pld_mutable);
@@ -310,18 +313,18 @@ let json_of_label_decl (decl: label_declaration) =
         ("attributes", json_of_attributes decl.pld_attributes);
     ])
 
-let json_of_ctor_args = function
+and json_of_ctor_args = function
 | Pcstr_tuple(tys) -> variant "Tuple" @@ json_of_list json_of_core_type tys
 | Pcstr_record(ls) -> variant "Record" @@ json_of_list json_of_label_decl ls
 
-let json_of_extension_constructor_kind = function
+and json_of_extension_constructor_kind = function
 | Pext_decl(args, ty) -> variant "Decl" @@ Array([
                                                json_of_ctor_args args;
                                                json_of_option json_of_core_type ty;
                                            ])
 | Pext_rebind(id) -> variant "Rebind" @@ json_of_loc json_of_long_ident id
 
-let json_of_extension_constructor (ctor: extension_constructor) =
+and json_of_extension_constructor (ctor: extension_constructor) =
     Object([
         ("name", json_of_loc json_of_string ctor.pext_name);
         ("kind", json_of_extension_constructor_kind ctor.pext_kind);
@@ -329,17 +332,9 @@ let json_of_extension_constructor (ctor: extension_constructor) =
         ("attributes", json_of_attributes ctor.pext_attributes);
     ])
 
-let json_of_rec_flag = function
+and json_of_rec_flag = function
 | Nonrecursive -> Bool(false)
 | Recursive -> Bool(true)
-
-let rec json_of_value_binding (vb: value_binding) : json =
-    Object([
-        ("pat", json_of_pattern vb.pvb_pat);
-        ("expr", json_of_expression vb.pvb_expr);
-        ("attributes", json_of_attributes vb.pvb_attributes);
-        ("location", json_of_location vb.pvb_loc);
-    ])
 
 and json_of_case (c: case) : json =
     Object([
@@ -470,15 +465,15 @@ and json_of_expression (exp: expression) : json =
 (******************************* MODULE LANGUAGE *****************************)
 (*****************************************************************************)
 
-let json_of_value_binding (b: value_binding) : json =
+and json_of_value_binding (vb: value_binding) : json =
     Object([
-        ("pat", json_of_pattern b.pvb_pat);
-        ("expr", json_of_expression b.pvb_expr);
-        ("attributes", json_of_attributes b.pvb_attributes);
-        ("location", json_of_location b.pvb_loc);
+        ("pat", json_of_pattern vb.pvb_pat);
+        ("expr", json_of_expression vb.pvb_expr);
+        ("attributes", json_of_attributes vb.pvb_attributes);
+        ("location", json_of_location vb.pvb_loc);
     ])
 
-let json_of_type_declaration (d: type_declaration) : json =
+and json_of_type_declaration (d: type_declaration) : json =
     Object([
         ("name", json_of_loc json_of_string d.ptype_name);
         (let helper (ct, v) = Array([json_of_core_type ct; json_of_variance v])
@@ -497,7 +492,7 @@ let json_of_type_declaration (d: type_declaration) : json =
         ("location", json_of_location d.ptype_loc);
     ])
 
-let json_of_open_description (o: open_description) : json =
+and json_of_open_description (o: open_description) : json =
     Object([
         ("id", json_of_loc json_of_long_ident o.popen_lid);
         ("override", json_of_override_flag o.popen_override);
@@ -505,7 +500,7 @@ let json_of_open_description (o: open_description) : json =
         ("attributes", json_of_attributes o.popen_attributes)
     ])
 
-let json_of_structure_item_desc = function
+and json_of_structure_item_desc = function
 | Pstr_eval(e, a) -> variant "Eval" @@ Array([
                          json_of_expression e;
                          json_of_attributes a;
@@ -541,13 +536,13 @@ let json_of_structure_item_desc = function
 | Pstr_extension of extension * attributes
 *)
 
-let json_of_structure_item (si: structure_item) : json =
+and json_of_structure_item (si: structure_item) : json =
     Object([
         ("location", json_of_location si.pstr_loc);
         ("desc", json_of_structure_item_desc si.pstr_desc);
     ])
 
-let json_of_structure (s: structure) : json =
+and json_of_structure (s: structure) : json =
     json_of_list json_of_structure_item s
 
 (* TODO json_of_module_binding *)
@@ -575,7 +570,14 @@ let json_of_toplevel_phrase = function
 (*****************************************************************************)
 
 let json_of_lexer_error = function
-| _ -> failwith "TODO Lexer Error"
+| Lexer.Illegal_character(ch) -> failwith "TODO Illegal_character"
+| Lexer.Illegal_escape(esc) -> failwith "TODO Illegal_escape"
+| Lexer.Unterminated_comment(loc) -> failwith "TODO Unterminated_comment"
+| Lexer.Unterminated_string -> failwith "TODO Unterminated_string"
+| Lexer.Unterminated_string_in_comment(l1, l2) -> failwith "TODO Unterminated_string_in_comment"
+| Lexer.Keyword_as_label(str) -> failwith "Keyword_as_label"
+| Lexer.Invalid_literal(str) -> failwith "Invalid_literal"
+| Lexer.Invalid_directive(dir, expl) -> failwith "Invalid_directive"
 
 let json_of_syntax_error = function
 | Syntaxerr.Unclosed(la, sa, lb, sb) ->
@@ -643,7 +645,9 @@ let parse (src: string) (path: string) : string =
                 Object([
                     ("Err", variant "Syntax" @@ json_of_syntax_error err)
                 ])
-            | _ -> failwith "TODO"
+            | err ->
+                let err = json_of_string (Printexc.to_string err) in
+                Object([ ("Err", variant "Other" @@ err) ])
     in
     string_of_json json
 

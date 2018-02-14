@@ -27,8 +27,10 @@ fn main() {
     let ast = parse(&src, file).unwrap_or_else(|err| {
         match err {
             OcamlAstError::OcamlParse(err) => {
-                let src = String::from_utf8_lossy(&src);
-                eprintln!("{}", err.as_msg(&src));
+                if !matches.is_present("SILENT") {
+                    let src = String::from_utf8_lossy(&src);
+                    eprintln!("{}", err.as_msg(&src));
+                }
             }
             _ => {
                 eprintln!("Couldn't parse {}", file.unwrap_or("stdin"));

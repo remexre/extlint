@@ -1,9 +1,9 @@
-static_flags = "--target x86_64-unknown-linux-musl"
+cargo_static_flags = "--target x86_64-unknown-linux-musl"
 
 build:
 	cargo build --all --release
 build-static:
-	cargo build --all {{static_flags}} --release
+	cargo build --all {{cargo_static_flags}} --release
 
 build-all: build build-static
 
@@ -16,7 +16,7 @@ clean:
 test:
 	cargo test --all --release
 test-static:
-	cargo test --all {{static_flags}} --release
+	cargo test --all {{cargo_static_flags}} --release
 
 package: build
 	mkdir -p dist/bin
