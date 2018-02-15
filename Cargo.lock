@@ -97,6 +97,15 @@ version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "extlint"
+version = "0.1.0"
+dependencies = [
+ "clap 2.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ocaml-ast 0.1.0",
+ "serde_json 1.0.9 (git+https://github.com/remexre/json.git)",
+]
+
+[[package]]
 name = "failure"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -161,15 +170,6 @@ dependencies = [
 name = "itoa"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
-name = "json_of_ocaml"
-version = "0.1.0"
-dependencies = [
- "clap 2.30.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "ocaml-ast 0.1.0",
- "serde_json 1.0.9 (git+https://github.com/remexre/json.git)",
-]
 
 [[package]]
 name = "kernel32-sys"

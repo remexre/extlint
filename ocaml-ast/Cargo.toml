@@ -2,10 +2,10 @@
 authors = ["Nathan Ringo <remexre@gmail.com>"]
 description = "A library for parsing OCaml."
 documentation = "https://docs.rs/ocaml-ast"
-homepage = "https://github.umn.edu/ringo025/extlint"
+homepage = "https://github.com/remexre/extlint"
 license = "Apache-2.0/MIT"
 name = "ocaml-ast"
-repository = "https://github.umn.edu/ringo025/extlint"
+repository = "https://github.com/remexre/extlint"
 version = "0.1.0"
 
 [dependencies]

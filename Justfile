@@ -20,13 +20,15 @@ test-static:
 
 package: build
 	mkdir -p dist/bin
-	cp target/release/get-gitgrade-repos dist/bin/get-gitgrade-repos
-	cp target/release/json_of_ocaml dist/bin/json_of_ocaml
+	install -s target/release/get-gitgrade-repos dist/bin
+	install -s target/release/json_of_ocaml dist/bin
+	install -s target/release/ocaml-syntax-check dist/bin
 	tar -czf extlint.tar.gz -C dist bin
 package-static: build-static
 	mkdir -p dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/get-gitgrade-repos dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/json_of_ocaml dist/bin
+	install -s target/x86_64-unknown-linux-musl/release/ocaml-syntax-check dist/bin
 	tar -czf extlint.tar.gz -C dist bin
 
 test-on-previous-class CLASS: build

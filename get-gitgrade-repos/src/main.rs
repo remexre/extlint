@@ -96,6 +96,7 @@ fn run(
     let mut core = Core::new()?;
     let student_uiids =
         get_student_uiids(&github_url, grading_scripts_dir, &mut core)?;
+    info!("Pulling {} repos...", student_uiids.len());
     let handle = core.handle();
     core.run(
         futures_unordered(student_uiids.into_iter().map(|uiid| {
@@ -106,7 +107,6 @@ fn run(
             .and_then(|res| {
                 let mut ok = 0;
                 let mut err = 0;
-                info!("Pulling {} repos...", res.len());
                 for r in res {
                     match r {
                         Ok(_) => {
