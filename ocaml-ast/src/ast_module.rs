@@ -1,4 +1,4 @@
-use ast_class::{ClassDescription, ClassTypeDeclaration};
+use ast_class::{ClassDeclaration, ClassDescription, ClassTypeDeclaration};
 use ast_core::{Expression, ExtensionConstructor, Pattern, TypeDeclaration,
                TypeExtension, ValueDescription};
 use ast_extension::{Attribute, Attributes, Extension};
@@ -139,25 +139,35 @@ pub enum StructureItemDesc {
     /// The flag is true for a `let rec`.
     Value(bool, Vec<ValueBinding>),
 
-    // Primitive,
+    Primitive(ValueDescription),
+
     /// The definition of a type.
     Type(bool, Vec<TypeDeclaration>),
 
-    // TypeExt,
+    TypeExt(TypeExtension),
+
     /// The declaration of an exception.
     Exception(ExtensionConstructor),
 
-    // Module,
-    // RecModule,
-    // ModType,
+    Module(ModuleBinding),
+
+    RecModule(Vec<ModuleBinding>),
+
+    ModType(ModuleTypeDeclaration),
+
     /// An open statement.
     Open(OpenDescription),
-    // Class,
-    // ClassType,
-    // Include,
+
+    Class(Vec<ClassDeclaration>),
+
+    ClassType(Vec<ClassTypeDeclaration>),
+
+    Include(IncludeDeclaration),
+
     /// An attribute, usually a doc comment.
     Attribute(Attribute),
-    // Extension,
+
+    Extension(Extension),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
