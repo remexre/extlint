@@ -1,6 +1,7 @@
 .*
 *~
 !.gitignore
+!.merlin
 !.travis/
 !.travis.yml
 
