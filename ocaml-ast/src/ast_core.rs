@@ -1,8 +1,9 @@
 use Constant;
+use ast_class::ClassStructure;
 use ast_extension::{Attributes, Extension};
 use ast_locations::{Loc, Location};
 use ast_misc::{ArgLabel, LongIdent, Variance};
-use ast_module::ValueBinding;
+use ast_module::{ModuleExpr, ValueBinding};
 
 /// A primitive type.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -30,8 +31,12 @@ pub enum CoreTypeDesc {
     Extension(Box<Extension>),
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct PackageType(Loc<LongIdent>, Vec<(Loc<LongIdent>, CoreType)>);
+
 /// A single possiblity in a enumerated type.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value")]
 pub enum RowField {
     Tag(Loc<String>, Attributes, bool, Vec<CoreType>),
     Inherit(CoreType),
@@ -39,7 +44,11 @@ pub enum RowField {
 
 /// A variable in a record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct ObjectField {}
+#[serde(tag = "type", content = "value")]
+pub enum ObjectField {
+    Tag(Loc<String>, Attributes, CoreType),
+    Inherit(CoreType),
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct Pattern {
@@ -55,20 +64,20 @@ pub enum PatternDesc {
     Var(Loc<String>),
     Alias(Box<Pattern>, Loc<String>),
     Constant(Constant),
-    // interval
+    Interval(Constant, Constant),
     Tuple(Vec<Pattern>),
     Construct(Loc<LongIdent>, Option<Box<Pattern>>),
-    // variant
-    // record
-    // array
+    Variant(String, Option<Box<Pattern>>),
+    Record(Vec<(Loc<LongIdent>, Pattern)>, bool),
+    Array(Vec<Pattern>),
     Or(Box<Pattern>, Box<Pattern>),
     Constraint(Box<Pattern>, CoreType),
-    // type
-    // lazy
-    // unpack
-    // exception
-    // extension
-    // open
+    Type(Loc<LongIdent>),
+    Lazy(Box<Pattern>),
+    Unpack(Loc<String>),
+    Exception(Box<Pattern>),
+    Extension(Extension),
+    Open(Loc<LongIdent>, Box<Pattern>),
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -91,31 +100,37 @@ pub enum ExpressionDesc {
     Try(Box<Expression>, Vec<Case>),
     Tuple(Vec<Expression>),
     Construct(Loc<LongIdent>, Option<Box<Expression>>),
-    // variant
+    Variant(String, Option<Box<Expression>>),
     Record(Vec<(Loc<LongIdent>, Expression)>, Option<Box<Expression>>),
     Field(Box<Expression>, Loc<LongIdent>),
     SetField(Box<Expression>, Loc<LongIdent>, Box<Expression>),
-    // array
+    Array(Vec<Expression>),
     IfThenElse(Box<Expression>, Box<Expression>, Option<Box<Expression>>),
     Sequence(Box<Expression>, Box<Expression>),
-    // while
-    // for
+    While(Box<Expression>, Box<Expression>),
+    For(
+        Box<Pattern>,
+        Box<Expression>,
+        Box<Expression>,
+        bool,
+        Box<Expression>,
+    ),
     Constraint(Box<Expression>, CoreType),
-    // coerce
-    // send
-    // new
-    // setinstvar
-    // override
-    // letmodule
-    // letexception
+    Coerce(Box<Expression>, Option<CoreType>, CoreType),
+    Send(Box<Expression>, Loc<String>),
+    New(Loc<LongIdent>),
+    SetInstVar(Loc<String>, Box<Expression>),
+    Override(Vec<(Loc<String>, Box<Expression>)>),
+    LetModule(Loc<String>, Box<ModuleExpr>, Box<Expression>),
+    LetException(ExtensionConstructor, Box<Expression>),
     Assert(Box<Expression>),
-    // lazy
-    // poly
-    // object
-    // newtype
-    // pack
-    // open
-    // extension
+    Lazy(Box<Expression>),
+    Poly(Box<Expression>, Option<CoreType>),
+    Object(ClassStructure),
+    NewType(Loc<String>, Box<Expression>),
+    Pack(Box<ModuleExpr>),
+    Open(bool, Loc<LongIdent>, Box<Expression>),
+    Extension(Extension),
     Unreachable,
 }
 
@@ -133,7 +148,18 @@ pub struct Case {
     pub expr: Expression,
 }
 
-pub struct ValueDescription;
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ValueDescription {
+    pub name: Loc<String>,
+
+    #[serde(rename = "type")] pub type_: CoreType,
+
+    pub prim: Vec<String>,
+
+    pub attributes: Attributes,
+
+    pub loc: Location,
+}
 
 /// The contents of a single type declaration.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -144,16 +170,32 @@ pub struct TypeDeclaration {
     /// The type's parameters.
     pub params: Vec<(CoreType, Variance)>,
 
-    // cstrs
-    // kind
-    // private
-    // manifest
-    // attributes
+    /// The constraints on the type.
+    pub cstrs: Vec<(CoreType, CoreType, Location)>,
+
+    /// The kind of a type.
+    pub kind: TypeKind,
+
+    /// Whether the type is private or not.
+    pub private: bool,
+
+    pub manifest: Option<CoreType>,
+
+    /// The attributes attached to the type declaration.
+    pub attributes: Attributes,
+
     /// The location of the type declaration.
     pub location: Location,
 }
 
-pub struct TypeKind;
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", content = "value")]
+pub enum TypeKind {
+    Abstract,
+    Variant(Vec<ConstructorDeclaration>),
+    Record(Vec<LabelDeclaration>),
+    Open,
+}
 
 /// A labelled value in a record.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -166,7 +208,7 @@ pub struct LabelDeclaration {
 
     /// The type of the value.
     #[serde(rename = "type")]
-    type_: CoreType,
+    pub type_: CoreType,
 
     /// The location of the labelled value.
     pub location: Location,
@@ -175,7 +217,14 @@ pub struct LabelDeclaration {
     pub attributes: Attributes,
 }
 
-pub struct ConstructorDeclaration;
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ConstructorDeclaration {
+    pub name: Loc<String>,
+    pub args: ConstructorArguments,
+    pub res: Option<CoreType>,
+    pub location: Location,
+    pub attributes: Attributes,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(tag = "type", content = "value")]
@@ -187,7 +236,14 @@ pub enum ConstructorArguments {
     Record(Vec<LabelDeclaration>),
 }
 
-pub struct TypeExtension;
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TypeExtension {
+    pub path: Loc<LongIdent>,
+    pub params: Vec<(CoreType, Variance)>,
+    pub constructors: Vec<ExtensionConstructor>,
+    pub private: bool,
+    pub attributes: Attributes,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ExtensionConstructor {

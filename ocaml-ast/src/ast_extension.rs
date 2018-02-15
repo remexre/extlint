@@ -16,5 +16,5 @@ pub enum Payload {
     Structure(Structure),
     Signature(Signature),
     Type(CoreType),
-    Pattern(Pattern, Option<Expression>),
+    Pattern(Box<Pattern>, Option<Box<Expression>>),
 }

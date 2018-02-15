@@ -105,6 +105,7 @@ let json_of_option f = function
 
 let json_of_list f xs = Array(List.map f xs)
 let json_of_pair f g (x, y) = Array([f x; g y])
+let json_of_triple f g h (x, y, z) = Array([f x; g y; h z])
 
 let json_of_string s = String(s)
 let json_of_char = json_of_string % String.make 1
@@ -210,10 +211,10 @@ and json_of_long_ident = function
 | Lident(s) -> variant "Ident" @@ json_of_string s
 | Ldot(i, s) -> variant "Dot" @@ Array([json_of_long_ident i; json_of_string s])
 | Lapply(l, r) ->
-        variant "Apply" @@ Array([
-            json_of_long_ident l;
-            json_of_long_ident r;
-        ])
+    variant "Apply" @@ Array([
+        json_of_long_ident l;
+        json_of_long_ident r;
+    ])
 
 (*****************************************************************************)
 (****************************** EXTENSION POINTS *****************************)
@@ -230,12 +231,13 @@ and json_of_attributes (attrs: attributes) : json =
 
 and json_of_payload = function
 | PStr(s) -> variant "Structure" @@ json_of_structure s
-| PSig(s) -> variant "Signature" @@ failwith "TODO PSig"
+| PSig(s) -> variant "Signature" @@ json_of_signature s
 | PTyp(s) -> variant "Type" @@ json_of_core_type s
-| PPat(p, e) -> variant "Pattern" @@ Array([
-                    json_of_pattern p;
-                    json_of_option json_of_expression e;
-                ])
+| PPat(p, e) ->
+    variant "Pattern" @@ Array([
+        json_of_pattern p;
+        json_of_option json_of_expression e;
+    ])
 
 (*****************************************************************************)
 (******************************** CORE LANGUAGE ******************************)
@@ -251,26 +253,46 @@ and json_of_core_type (ct: core_type) : json =
 and json_of_core_type_desc = function
 | Ptyp_any -> variant "Any" Null
 | Ptyp_var(s) -> variant "Var" @@ json_of_string s
-| Ptyp_arrow(a, l, r) -> variant "Arrow" @@ Array([
-                                                json_of_arg_label a;
-                                                json_of_core_type l;
-                                                json_of_core_type r;
-                                            ])
+| Ptyp_arrow(a, l, r) ->
+    variant "Arrow" @@ Array([
+        json_of_arg_label a;
+        json_of_core_type l;
+        json_of_core_type r;
+    ])
 | Ptyp_tuple(ts) -> variant "Tuple" @@ json_of_list json_of_core_type ts
-| Ptyp_constr(a, ts) -> variant "Constr" @@ Array([
-                                                json_of_loc json_of_long_ident a;
-                                                json_of_list json_of_core_type ts;
-                                            ])
-| Ptyp_object(fs, c) -> failwith "TODO Object"
-| Ptyp_class(l, ts) -> failwith "TODO Class"
-| Ptyp_alias(t, s) -> failwith "TODO Alias"
-| Ptyp_variant(vs, c, ls) -> failwith "TODO Variant"
-| Ptyp_poly(vs, t) -> variant "Poly" @@ Array([
-                                            json_of_list (json_of_loc json_of_string) vs;
-                                            json_of_core_type t;
-                                        ])
-| Ptyp_package(e) -> failwith "TODO Package"
-| Ptyp_extension(e) -> failwith "TODO Extension"
+| Ptyp_constr(a, ts) ->
+    variant "Constr" @@ Array([
+        json_of_loc json_of_long_ident a;
+        json_of_list json_of_core_type ts;
+    ])
+| Ptyp_object(fs, c) ->
+    variant "Object" @@ Array([
+        json_of_list json_of_object_field fs;
+        json_of_closed_flag c;
+    ])
+| Ptyp_class(l, ts) ->
+    variant "Class" @@ Array([
+        json_of_loc json_of_long_ident l;
+        json_of_list json_of_core_type ts;
+    ])
+| Ptyp_alias(t, s) ->
+    variant "Alias" @@ Array([
+        json_of_core_type t;
+        json_of_string s;
+    ])
+| Ptyp_variant(vs, c, ls) ->
+    variant "Variant" @@ Array([
+        json_of_list json_of_row_field vs;
+        json_of_closed_flag c;
+        json_of_option (json_of_list json_of_label) ls;
+    ])
+| Ptyp_poly(vs, t) ->
+    variant "Poly" @@ Array([
+        json_of_list (json_of_loc json_of_string) vs;
+        json_of_core_type t;
+    ])
+| Ptyp_package(e) -> variant "Package" @@ json_of_package_type e
+| Ptyp_extension(e) -> variant "Extension" @@ json_of_extension e
 
 and json_of_package_type (pt: package_type) : json =
     json_of_pair
@@ -288,56 +310,14 @@ and json_of_row_field : row_field -> json = function
     ])
 | Rinherit(t) -> variant "Inherit" @@ json_of_core_type t
 
-and json_of_pattern_desc = function
-| Ppat_any -> variant "Any" Null
-| Ppat_var(n) -> variant "Var" @@ json_of_loc json_of_string n
-| Ppat_alias(p, n) ->
-        variant "Alias" @@ Array([
-            json_of_pattern p;
-            json_of_loc json_of_string n;
-        ])
-| Ppat_constant(c) -> variant "Constant" @@ json_of_constant c
-| Ppat_interval(f, t) ->
-        variant "Interval" @@ Array([
-            json_of_constant f;
-            json_of_constant t;
-        ])
-| Ppat_tuple(ps) -> variant "Tuple" @@ json_of_list json_of_pattern ps
-| Ppat_construct(n, p) ->
-        variant "Construct" @@ Array([
-            json_of_loc json_of_long_ident n;
-            json_of_option json_of_pattern p;
-        ])
-| Ppat_variant(n, p) ->
-        variant "Variant" @@ Array([
-            json_of_string n;
-            json_of_option json_of_pattern p;
-        ])
-| Ppat_record(ms, closed) ->
-    variant "Record" @@ Array([
-        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_pattern) ms;
-        json_of_closed_flag closed;
+and json_of_object_field = function
+| Otag(n, a, t) ->
+    variant "Tag" @@ Array([
+        json_of_loc json_of_label n;
+        json_of_attributes a;
+        json_of_core_type t;
     ])
-| Ppat_array(ps) -> variant "Array" @@ json_of_list json_of_pattern ps
-| Ppat_or(l, r) ->
-        variant "Or" @@ Array([
-            json_of_pattern l;
-            json_of_pattern r;
-        ])
-| Ppat_constraint(p, t) -> variant "Constraint" @@ Array([
-                                                       json_of_pattern p;
-                                                       json_of_core_type t;
-                                                   ])
-| Ppat_type(t) -> variant "Type" @@ json_of_loc json_of_long_ident t
-| Ppat_lazy(p) -> variant "Lazy" @@ json_of_pattern p
-| Ppat_unpack(s) -> variant "Unpack" @@ json_of_loc json_of_string s
-| Ppat_exception(p) -> variant "Exception" @@ json_of_pattern p
-| Ppat_extension(e) -> variant "Extension" @@ json_of_extension e
-| Ppat_open(n, p) ->
-        variant "Open" @@ Array([
-            json_of_loc json_of_long_ident n;
-            json_of_pattern p;
-        ])
+| Oinherit(t) -> variant "Inherit" @@ json_of_core_type t
 
 and json_of_pattern (pat: pattern) : json =
     Object([
@@ -346,139 +326,56 @@ and json_of_pattern (pat: pattern) : json =
         ("attributes", json_of_attributes pat.ppat_attributes);
     ])
 
-and json_of_label_decl (decl: label_declaration) =
-    Object([
-        ("name", json_of_loc json_of_string decl.pld_name);
-        ("mutable", json_of_mutable_flag decl.pld_mutable);
-        ("type", json_of_core_type decl.pld_type);
-        ("location", json_of_location decl.pld_loc);
-        ("attributes", json_of_attributes decl.pld_attributes);
+and json_of_pattern_desc = function
+| Ppat_any -> variant "Any" Null
+| Ppat_var(n) -> variant "Var" @@ json_of_loc json_of_string n
+| Ppat_alias(p, n) ->
+    variant "Alias" @@ Array([
+        json_of_pattern p;
+        json_of_loc json_of_string n;
     ])
-
-and json_of_ctor_args = function
-| Pcstr_tuple(tys) -> variant "Tuple" @@ json_of_list json_of_core_type tys
-| Pcstr_record(ls) -> variant "Record" @@ json_of_list json_of_label_decl ls
-
-and json_of_extension_constructor_kind = function
-| Pext_decl(args, ty) -> variant "Decl" @@ Array([
-                                               json_of_ctor_args args;
-                                               json_of_option json_of_core_type ty;
-                                           ])
-| Pext_rebind(id) -> variant "Rebind" @@ json_of_loc json_of_long_ident id
-
-and json_of_extension_constructor (ctor: extension_constructor) =
-    Object([
-        ("name", json_of_loc json_of_string ctor.pext_name);
-        ("kind", json_of_extension_constructor_kind ctor.pext_kind);
-        ("location", json_of_location ctor.pext_loc);
-        ("attributes", json_of_attributes ctor.pext_attributes);
+| Ppat_constant(c) -> variant "Constant" @@ json_of_constant c
+| Ppat_interval(f, t) ->
+    variant "Interval" @@ Array([
+        json_of_constant f;
+        json_of_constant t;
     ])
-
-and json_of_case (c: case) : json =
-    Object([
-        ("pat", json_of_pattern c.pc_lhs);
-        ("guard", json_of_option json_of_expression c.pc_guard);
-        ("expr", json_of_expression c.pc_rhs);
+| Ppat_tuple(ps) -> variant "Tuple" @@ json_of_list json_of_pattern ps
+| Ppat_construct(n, p) ->
+    variant "Construct" @@ Array([
+        json_of_loc json_of_long_ident n;
+        json_of_option json_of_pattern p;
     ])
-
-and json_of_expression_desc = function
-| Pexp_ident(i) -> variant "Ident" @@ json_of_loc json_of_long_ident i
-| Pexp_constant(c) -> variant "Constant" @@ json_of_constant c
-| Pexp_let(r, vs, e) -> variant "Let" @@ Array([
-                                             json_of_rec_flag r;
-                                             json_of_list json_of_value_binding vs;
-                                             json_of_expression e;
-                                         ])
-| Pexp_function(cs) -> variant "Function" @@ json_of_list json_of_case cs
-| Pexp_fun(a, eo, p, b) -> variant "Fun" @@ Array([
-                                                json_of_arg_label a;
-                                                json_of_option json_of_expression eo;
-                                                json_of_pattern p;
-                                                json_of_expression b;
-                                            ])
-| Pexp_apply(f, a) ->
-        let helper (a, e) = Array([json_of_arg_label a; json_of_expression e]) in
-            variant "Apply" @@ Array([json_of_expression f; json_of_list helper a])
-| Pexp_match(e, cs) -> variant "Match" @@ Array([
-                                              json_of_expression e;
-                                              json_of_list json_of_case cs;
-                                          ])
-| Pexp_try(e, cs) -> variant "Try" @@ Array([
-                                          json_of_expression e;
-                                          json_of_list json_of_case cs;
-                                      ])
-| Pexp_tuple(es) -> variant "Tuple" @@ json_of_list json_of_expression es
-| Pexp_construct(t, eo) -> variant "Construct" @@ Array([
-                                                      json_of_loc json_of_long_ident t;
-                                                      json_of_option json_of_expression eo;
-                                                  ])
-| Pexp_variant(_, _) -> failwith "TODO Variant"
-| Pexp_record(vs, eo) -> variant "Record" @@ Array ([
-                                                 (let helper (n, e) = Array([
-                                                     json_of_loc json_of_long_ident n;
-                                                     json_of_expression e;
-                                                 ]) in json_of_list helper vs);
-                                                 json_of_option json_of_expression eo;
-                                             ])
-| Pexp_field(e, n) -> variant "Field" @@ Array([
-                                             json_of_expression e;
-                                             json_of_loc json_of_long_ident n;
-                                         ])
-| Pexp_setfield(e, n, v) -> variant "SetField" @@ Array([
-                                                      json_of_expression e;
-                                                      json_of_loc json_of_long_ident n;
-                                                      json_of_expression v;
-                                                  ])
-| Pexp_array(es) -> variant "Array" @@ json_of_list json_of_expression es
-| Pexp_ifthenelse(c, t, e) -> variant "IfThenElse" @@ Array([
-                                                          json_of_expression c;
-                                                          json_of_expression t;
-                                                          json_of_option json_of_expression e;
-                                                      ])
-| Pexp_sequence(e1, e2) -> variant "Sequence" @@ Array([
-                                                     json_of_expression e1;
-                                                     json_of_expression e2;
-                                                 ])
-| Pexp_while(_, _) -> failwith "TODO While"
-| Pexp_for(_, _, _, _, _) -> failwith "TODO For"
-| Pexp_constraint(e, t) -> variant "Constraint" @@ Array([
-                                                       json_of_expression e;
-                                                       json_of_core_type t;
-                                                   ])
-| Pexp_coerce(_, _, _) -> failwith "TODO Coerce"
-| Pexp_send(_, _) -> failwith "TODO Send"
-| Pexp_new(_) -> failwith "TODO New"
-| Pexp_setinstvar(_, _) -> failwith "TODO SetInstVar"
-| Pexp_override(_) -> failwith "TODO Override"
-| Pexp_letmodule(_, _, _) -> failwith "TODO LetModule"
-| Pexp_letexception(_, _) -> failwith "TODO LetException"
-| Pexp_assert(expr) -> variant "Assert" @@ json_of_expression expr
-| Pexp_lazy(_) -> failwith "TODO Lazy"
-| Pexp_poly(_, _) -> failwith "TODO Poly"
-| Pexp_object(_) -> failwith "TODO Object"
-| Pexp_newtype(_, _) -> failwith "TODO Newtype"
-| Pexp_pack(_) -> failwith "TODO Pack"
-| Pexp_open(_, _, _) -> failwith "TODO Open"
-| Pexp_extension(_) -> failwith "TODO Extension"
-| Pexp_unreachable -> variant "Unreachable" Null
-
-and json_of_type_declaration (d: type_declaration) : json =
-    Object([
-        ("name", json_of_loc json_of_string d.ptype_name);
-        (let helper (ct, v) = Array([json_of_core_type ct; json_of_variance v])
-        in ("params", json_of_list helper d.ptype_params));
-      (*ptype_params : (core_type * Asttypes.variance) list;*)
-        (*("cstrs", failwith "TODO");*)
-      (*ptype_cstrs : (core_type * core_type * Location.t) list;*)
-        (*("kind", failwith "TODO");*)
-      (*ptype_kind : type_kind;*)
-        (*("private", failwith "TODO");*)
-      (*ptype_private : Asttypes.private_flag;*)
-        (*("manifest", failwith "TODO");*)
-      (*ptype_manifest : core_type option;*)
-        (*("attributes", failwith "TODO");*)
-      (*ptype_attributes : attributes;*)
-        ("location", json_of_location d.ptype_loc);
+| Ppat_variant(n, p) ->
+    variant "Variant" @@ Array([
+        json_of_string n;
+        json_of_option json_of_pattern p;
+    ])
+| Ppat_record(ms, closed) ->
+    variant "Record" @@ Array([
+        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_pattern) ms;
+        json_of_closed_flag closed;
+    ])
+| Ppat_array(ps) -> variant "Array" @@ json_of_list json_of_pattern ps
+| Ppat_or(l, r) ->
+    variant "Or" @@ Array([
+        json_of_pattern l;
+        json_of_pattern r;
+    ])
+| Ppat_constraint(p, t) ->
+    variant "Constraint" @@ Array([
+        json_of_pattern p;
+        json_of_core_type t;
+    ])
+| Ppat_type(t) -> variant "Type" @@ json_of_loc json_of_long_ident t
+| Ppat_lazy(p) -> variant "Lazy" @@ json_of_pattern p
+| Ppat_unpack(s) -> variant "Unpack" @@ json_of_loc json_of_string s
+| Ppat_exception(p) -> variant "Exception" @@ json_of_pattern p
+| Ppat_extension(e) -> variant "Extension" @@ json_of_extension e
+| Ppat_open(n, p) ->
+    variant "Open" @@ Array([
+        json_of_loc json_of_long_ident n;
+        json_of_pattern p;
     ])
 
 and json_of_expression (exp: expression) : json =
@@ -486,6 +383,153 @@ and json_of_expression (exp: expression) : json =
         ("desc", json_of_expression_desc exp.pexp_desc);
         ("location", json_of_location exp.pexp_loc);
         ("attributes", json_of_attributes exp.pexp_attributes);
+    ])
+
+and json_of_expression_desc = function
+| Pexp_ident(i) -> variant "Ident" @@ json_of_loc json_of_long_ident i
+| Pexp_constant(c) -> variant "Constant" @@ json_of_constant c
+| Pexp_let(r, vs, e) ->
+    variant "Let" @@ Array([
+        json_of_rec_flag r;
+        json_of_list json_of_value_binding vs;
+        json_of_expression e;
+    ])
+| Pexp_function(cs) -> variant "Function" @@ json_of_list json_of_case cs
+| Pexp_fun(a, eo, p, b) ->
+    variant "Fun" @@ Array([
+        json_of_arg_label a;
+        json_of_option json_of_expression eo;
+        json_of_pattern p;
+        json_of_expression b;
+    ])
+| Pexp_apply(f, a) ->
+    let helper (a, e) = Array([json_of_arg_label a; json_of_expression e]) in
+    variant "Apply" @@ Array([json_of_expression f; json_of_list helper a])
+| Pexp_match(e, cs) ->
+    variant "Match" @@ Array([
+        json_of_expression e;
+        json_of_list json_of_case cs;
+    ])
+| Pexp_try(e, cs) ->
+    variant "Try" @@ Array([
+        json_of_expression e;
+        json_of_list json_of_case cs;
+    ])
+| Pexp_tuple(es) -> variant "Tuple" @@ json_of_list json_of_expression es
+| Pexp_construct(t, eo) ->
+    variant "Construct" @@ Array([
+        json_of_loc json_of_long_ident t;
+        json_of_option json_of_expression eo;
+    ])
+| Pexp_variant(l, eo) ->
+    variant "Variant" @@ Array([
+        json_of_label l;
+        json_of_option json_of_expression eo;
+    ])
+| Pexp_record(vs, eo) ->
+    variant "Record" @@ Array ([
+        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_expression) vs;
+        json_of_option json_of_expression eo;
+    ])
+| Pexp_field(e, n) ->
+    variant "Field" @@ Array([
+        json_of_expression e;
+        json_of_loc json_of_long_ident n;
+    ])
+| Pexp_setfield(e, n, v) ->
+    variant "SetField" @@ Array([
+        json_of_expression e;
+        json_of_loc json_of_long_ident n;
+        json_of_expression v;
+    ])
+| Pexp_array(es) -> variant "Array" @@ json_of_list json_of_expression es
+| Pexp_ifthenelse(c, t, e) ->
+    variant "IfThenElse" @@ Array([
+        json_of_expression c;
+        json_of_expression t;
+        json_of_option json_of_expression e;
+    ])
+| Pexp_sequence(e1, e2) ->
+    variant "Sequence" @@ Array([
+        json_of_expression e1;
+        json_of_expression e2;
+    ])
+| Pexp_while(c, l) ->
+    variant "While" @@ Array([
+        json_of_expression c;
+        json_of_expression l;
+    ])
+| Pexp_for(p, i, n, d, b) ->
+    variant "For" @@ Array([
+        json_of_pattern p;
+        json_of_expression i;
+        json_of_expression n;
+        json_of_direction_flag d;
+        json_of_expression b;
+    ])
+| Pexp_constraint(e, t) ->
+    variant "Constraint" @@ Array([
+        json_of_expression e;
+        json_of_core_type t;
+    ])
+| Pexp_coerce(e, t1, t2) ->
+    variant "Coerce" @@ Array([
+        json_of_expression e;
+        json_of_option json_of_core_type t1;
+        json_of_core_type t2;
+    ])
+| Pexp_send(e, n) ->
+    variant "Send" @@ Array([
+        json_of_expression e;
+        json_of_loc json_of_label n;
+    ])
+| Pexp_new(n) -> variant "New" @@ json_of_loc json_of_long_ident n
+| Pexp_setinstvar(n, e) ->
+    variant "SetInstVar" @@ Array([
+        json_of_loc json_of_label n;
+        json_of_expression e;
+    ])
+| Pexp_override(bs) -> variant "Override" @@ json_of_list
+    (json_of_pair (json_of_loc json_of_label) json_of_expression) bs
+| Pexp_letmodule(n, m, e) ->
+    variant "LetModule" @@ Array([
+        json_of_loc json_of_string n;
+        json_of_module_expr m;
+        json_of_expression e;
+    ])
+| Pexp_letexception(ec, e) ->
+    variant "LetException" @@ Array([
+        json_of_extension_constructor ec;
+        json_of_expression e;
+    ])
+| Pexp_assert(expr) -> variant "Assert" @@ json_of_expression expr
+| Pexp_lazy(e) -> variant "Lazy" @@ json_of_expression e
+| Pexp_poly(e, t) ->
+    variant "Poly" @@ Array([
+        json_of_expression e;
+        json_of_option json_of_core_type t;
+    ])
+| Pexp_object(cs) -> variant "Object" @@ json_of_class_structure cs
+| Pexp_newtype(n, e) ->
+    variant "NewType" @@ Array([
+        json_of_loc json_of_string n;
+        json_of_expression e;
+    ])
+| Pexp_pack(me) -> variant "Pack" @@ json_of_module_expr me
+| Pexp_open(o, n, e) ->
+    variant "Open" @@ Array([
+        json_of_override_flag o;
+        json_of_loc json_of_long_ident n;
+        json_of_expression e;
+    ])
+| Pexp_extension(e) -> variant "Extension" @@ json_of_extension e
+| Pexp_unreachable -> variant "Unreachable" Null
+
+and json_of_case (c: case) : json =
+    Object([
+        ("pat", json_of_pattern c.pc_lhs);
+        ("guard", json_of_option json_of_expression c.pc_guard);
+        ("expr", json_of_expression c.pc_rhs);
     ])
 
 and json_of_value_description (vd: value_description) : json =
@@ -497,6 +541,48 @@ and json_of_value_description (vd: value_description) : json =
         ("location", json_of_location vd.pval_loc);
     ])
 
+and json_of_type_declaration (d: type_declaration) : json =
+    Object([
+        ("name", json_of_loc json_of_string d.ptype_name);
+        ("params", json_of_list (json_of_pair json_of_core_type json_of_variance) d.ptype_params);
+        ("cstrs", json_of_list
+           (json_of_triple json_of_core_type json_of_core_type json_of_location)
+           d.ptype_cstrs);
+        ("kind", json_of_type_kind d.ptype_kind);
+        ("private", json_of_private_flag d.ptype_private);
+        ("manifest", json_of_option json_of_core_type d.ptype_manifest);
+        ("attributes", json_of_attributes d.ptype_attributes);
+        ("location", json_of_location d.ptype_loc);
+    ])
+
+and json_of_type_kind = function
+| Ptype_abstract -> variant "Abstract" Null
+| Ptype_variant(cds) -> variant "Variant" @@ json_of_list json_of_constructor_declaration cds
+| Ptype_record(lds) -> variant "Record" @@ json_of_list json_of_label_declaration lds
+| Ptype_open -> variant "Open" Null
+
+and json_of_label_declaration (decl: label_declaration) =
+    Object([
+        ("name", json_of_loc json_of_string decl.pld_name);
+        ("mutable", json_of_mutable_flag decl.pld_mutable);
+        ("type", json_of_core_type decl.pld_type);
+        ("location", json_of_location decl.pld_loc);
+        ("attributes", json_of_attributes decl.pld_attributes);
+    ])
+
+and json_of_constructor_declaration (cd: constructor_declaration) : json =
+    Object([
+        ("name", json_of_loc json_of_string cd.pcd_name);
+        ("args", json_of_constructor_arguments cd.pcd_args);
+        ("res", json_of_option json_of_core_type cd.pcd_res);
+        ("location", json_of_location cd.pcd_loc);
+        ("attributes", json_of_attributes cd.pcd_attributes);
+    ])
+
+and json_of_constructor_arguments = function
+| Pcstr_tuple(tys) -> variant "Tuple" @@ json_of_list json_of_core_type tys
+| Pcstr_record(ls) -> variant "Record" @@ json_of_list json_of_label_declaration ls
+
 and json_of_type_extension (te: type_extension) : json =
     Object([
         ("path", json_of_loc json_of_long_ident te.ptyext_path);
@@ -505,6 +591,23 @@ and json_of_type_extension (te: type_extension) : json =
         ("private", json_of_private_flag te.ptyext_private);
         ("attributes", json_of_attributes te.ptyext_attributes);
     ])
+
+and json_of_extension_constructor (ctor: extension_constructor) =
+    Object([
+        ("name", json_of_loc json_of_string ctor.pext_name);
+        ("kind", json_of_extension_constructor_kind ctor.pext_kind);
+        ("location", json_of_location ctor.pext_loc);
+        ("attributes", json_of_attributes ctor.pext_attributes);
+    ])
+
+and json_of_extension_constructor_kind = function
+| Pext_decl(args, ty) ->
+    variant "Decl" @@ Array([
+        json_of_constructor_arguments args;
+        json_of_option json_of_core_type ty;
+    ])
+| Pext_rebind(id) -> variant "Rebind" @@ json_of_loc json_of_long_ident id
+
 
 (*****************************************************************************)
 (******************************* CLASS LANGUAGE ******************************)
@@ -604,6 +707,86 @@ and json_of_class_expr_desc : class_expr_desc -> json = function
         json_of_loc json_of_long_ident name;
         json_of_list json_of_core_type types;
     ])
+| Pcl_structure(cl) -> variant "Structure" @@ json_of_class_structure cl
+| Pcl_fun(l, eo, p, e) ->
+    variant "Fun" @@ Array([
+        json_of_arg_label l;
+        json_of_option json_of_expression eo;
+        json_of_pattern p;
+        json_of_class_expr e;
+    ])
+| Pcl_apply(e, a) ->
+    variant "Apply" @@ Array([
+        json_of_class_expr e;
+        json_of_list (json_of_pair json_of_arg_label json_of_expression) a;
+    ])
+| Pcl_let(r, bs, e) ->
+    variant "Let" @@ Array([
+        json_of_rec_flag r;
+        json_of_list json_of_value_binding bs;
+        json_of_class_expr e;
+    ])
+| Pcl_constraint(e, t) ->
+    variant "Constraint" @@ Array([
+        json_of_class_expr e;
+        json_of_class_type t;
+    ])
+| Pcl_extension(ext) -> variant "Extension" @@ json_of_extension ext
+| Pcl_open(o, n, e) ->
+    variant "Open" @@ Array([
+        json_of_override_flag o;
+        json_of_loc json_of_long_ident n;
+        json_of_class_expr e;
+    ])
+
+and json_of_class_structure (cs: class_structure) : json =
+    Object([
+        ("self", json_of_pattern cs.pcstr_self);
+        ("fields", json_of_list json_of_class_field cs.pcstr_fields);
+    ])
+
+and json_of_class_field (cf: class_field) : json =
+    Object([
+        ("desc", json_of_class_field_desc cf.pcf_desc);
+        ("location", json_of_location cf.pcf_loc);
+        ("attributes", json_of_attributes cf.pcf_attributes);
+    ])
+
+and json_of_class_field_desc = function
+| Pcf_inherit(o, e, n) ->
+    variant "Inherit" @@ Array([
+        json_of_override_flag o;
+        json_of_class_expr e;
+        json_of_option (json_of_loc json_of_string) n;
+    ])
+| Pcf_val(n, m, k) ->
+    variant "Val" @@ Array([
+        json_of_loc json_of_label n;
+        json_of_mutable_flag m;
+        json_of_class_field_kind k;
+    ])
+| Pcf_method(n, p, k) ->
+    variant "Val" @@ Array([
+        json_of_loc json_of_label n;
+        json_of_private_flag p;
+        json_of_class_field_kind k;
+    ])
+| Pcf_constraint(t1, t2) ->
+    variant "Constraint" @@ Array([
+        json_of_core_type t1;
+        json_of_core_type t2;
+    ])
+| Pcf_initializer(e) -> variant "Initializer" @@ json_of_expression e
+| Pcf_attribute(a) -> variant "Attribute" @@ json_of_attribute a
+| Pcf_extension(e) -> variant "Extension" @@ json_of_extension e
+
+and json_of_class_field_kind = function
+| Cfk_virtual(t) -> variant "Virtual" @@ json_of_core_type t
+| Cfk_concrete(o, e) ->
+    variant "Concrete" @@ Array([
+        json_of_override_flag o;
+        json_of_expression e;
+    ])
 
 and json_of_class_declaration (cd: class_declaration) : json =
     json_of_class_infos json_of_class_expr cd
@@ -621,7 +804,7 @@ and json_of_module_type (mt: module_type) : json =
 
 and json_of_module_type_desc = function
 | Pmty_ident(ident) -> variant "Ident" @@ json_of_loc json_of_long_ident ident
-| Pmty_signature(s) -> variant "Signature" @@ failwith "TODO Pmty_signature"
+| Pmty_signature(s) -> variant "Signature" @@ json_of_signature s
 | Pmty_functor(name, arg, body) ->
     variant "Functor" @@ Array([
         json_of_loc json_of_string name;
@@ -636,6 +819,46 @@ and json_of_module_type_desc = function
 | Pmty_typeof(me) -> variant "TypeOf" @@ json_of_module_expr me
 | Pmty_extension(e) -> variant "Extension" @@ json_of_extension e
 | Pmty_alias(n) -> variant "Alias" @@ json_of_loc json_of_long_ident n
+
+and json_of_signature (s: signature) : json =
+    json_of_list json_of_signature_item s
+
+and json_of_signature_item (si: signature_item) : json =
+    Object([
+        ("desc", json_of_signature_item_desc si.psig_desc);
+        ("location", json_of_location si.psig_loc);
+    ])
+
+and json_of_signature_item_desc = function
+| Psig_value(vd) -> variant "Value" @@ json_of_value_description vd
+| Psig_type(r, tds) ->
+    variant "Type" @@ Array([
+        json_of_rec_flag r;
+        json_of_list json_of_type_declaration tds;
+    ])
+| Psig_typext(te) -> variant "TypeExt" @@ json_of_type_extension te
+| Psig_exception(ec) -> variant "Exception" @@ json_of_extension_constructor ec
+| Psig_module(md) -> variant "Module" @@ json_of_module_declaration md
+| Psig_recmodule(mds) -> variant "RecModule" @@ json_of_list json_of_module_declaration mds
+| Psig_modtype(mt) -> variant "ModType" @@ json_of_module_type_declaration mt
+| Psig_open(o) -> variant "Open" @@ json_of_open_description o
+| Psig_include(id) -> variant "Include" @@ json_of_include_description id
+| Psig_class(cds) -> variant "Class" @@ json_of_list json_of_class_description cds
+| Psig_class_type(ctds) -> variant "ClassType" @@ json_of_list json_of_class_type_declaration ctds
+| Psig_attribute(a) -> variant "Attribute" @@ json_of_attribute a
+| Psig_extension(e, a) ->
+    variant "Extension" @@ Array([
+        json_of_extension e;
+        json_of_attributes a;
+    ])
+
+and json_of_module_declaration (md: module_declaration) : json =
+    Object([
+        ("name", json_of_loc json_of_string md.pmd_name);
+        ("type", json_of_module_type md.pmd_type);
+        ("attributes", json_of_attributes md.pmd_attributes);
+        ("location", json_of_location md.pmd_loc);
+    ])
 
 and json_of_module_type_declaration (mtd: module_type_declaration) : json =
     Object([
@@ -780,16 +1003,21 @@ and json_of_module_binding (mb: module_binding) : json =
 let json_of_directive_argument = function
 | Pdir_none -> variant "None" @@ Null
 | Pdir_string(s) -> variant "String" @@ String(s)
-| Pdir_int(c, s) -> failwith "TODO Pdir_int"
+| Pdir_int(c, s) ->
+    variant "Int" @@ Array([
+        json_of_string c;
+        json_of_option json_of_char s;
+    ])
 | Pdir_ident(i) -> variant "Ident" @@ json_of_long_ident i
 | Pdir_bool(b) -> variant "Bool" @@ Bool(b)
 
 let json_of_toplevel_phrase = function
 | Ptop_def(s) -> variant "Def" @@ json_of_structure s
-| Ptop_dir(n, a) -> variant "Dir" @@ Array([
-                        json_of_string n;
-                        json_of_directive_argument a;
-                    ])
+| Ptop_dir(n, a) ->
+    variant "Dir" @@ Array([
+        json_of_string n;
+        json_of_directive_argument a;
+    ])
 
 (*****************************************************************************)
 (******************************* ERROR HANDLING ******************************)
