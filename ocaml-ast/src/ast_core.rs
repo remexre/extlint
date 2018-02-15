@@ -152,13 +152,14 @@ pub struct Case {
 pub struct ValueDescription {
     pub name: Loc<String>,
 
-    #[serde(rename = "type")] pub type_: CoreType,
+    #[serde(rename = "type")]
+    pub type_: CoreType,
 
     pub prim: Vec<String>,
 
     pub attributes: Attributes,
 
-    pub loc: Location,
+    pub location: Location,
 }
 
 /// The contents of a single type declaration.
