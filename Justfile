@@ -7,6 +7,11 @@ build-static:
 
 build-all: build build-static
 
+check:
+	cargo check --all
+check-static:
+	cargo check --all {{cargo_static_flags}}
+
 clean:
 	cargo clean
 	if test -d dist; then rm -r dist; fi

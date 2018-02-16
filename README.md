@@ -6,15 +6,20 @@
 An extensible linter for OCaml programs.
 Designed to be used as part of the grading infrastructure for CSCI2041.
 
-## Building
-
-### Dependencies
-
 Currently, only tested on Linux systems.
 May work on macOS, but no guarantees are made.
 
+## Obtaining
+
+Tagged releases are automatically built as static executables by [Travis CI](https://travis-ci.org/remexre/extlint), and uploaded to this repo's [releases page](https://github.com/remexre/extlint/releases).
+Alternatively, the project can be built from source with the below instructions.
+
+## Building from Source
+
+### Dependencies
+
 Requires a working Rust installation, which can be obtained with [rustup](https://rustup.rs/).
-Requires an installation of OCaml, OPAM, ocamlfind, and ocaml-compiler-libs.
+Requires an installation of OCaml, OPAM, and ocamlfind.
 Requires a C compiler.
 
 [just](https://github.com/casey/just) is recommended, and will be used in the instructions here.
@@ -26,18 +31,19 @@ If the `OPAMSWITCH` environment variable is defined, that switch will be used in
 
 ### Compiling
 
-TODO
+Run `just package` or `just package-static`.
+This will compile `extlint` and its tools, and create the same `extlint.tar.gz` bundle as built by Travis.
 
-### Installation
+## Installation
 
-TODO
+Extract the binaries from `extlint.tar.gz` to somewhere on your `PATH`.
 
 ## Code Organization
 
 `get-gitgrade-repos` is a small helper program that clones all the student repos.
 This is mainly for testing and assessments.
 
-`json_of_ocaml` is a command-line tool that dumps an OCaml AST as JSON.
+`json_of_ocaml` is a command-line tool that dumps an OCaml untyped AST as JSON.
 It's the best way to interface with `ocaml-ast` without linking directly to it.
 
 `ocaml-ast` is a hybrid Rust-OCaml crate to parse OCaml code.
