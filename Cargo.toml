@@ -2,6 +2,7 @@
 members = [
 	"get-gitgrade-repos",
 	"ocaml-ast",
+	"serde-datalog",
 ]
 
 [package]
@@ -16,7 +17,12 @@ version = "0.1.0"
 [dependencies]
 clap = "2.29.4"
 ocaml-ast = { path = "ocaml-ast" }
+serde-datalog = { path = "serde-datalog" }
 serde_json = "1.0.9"
+
+[[bin]]
+name = "datalog_of_ocaml"
+path = "src/datalog_of_ocaml/main.rs"
 
 [[bin]]
 name = "json_of_ocaml"

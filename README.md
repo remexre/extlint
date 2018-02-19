@@ -43,10 +43,15 @@ Extract the binaries from `extlint.tar.gz` to somewhere on your `PATH`.
 `get-gitgrade-repos` is a small helper program that clones all the student repos.
 This is mainly for testing and assessments.
 
-`json_of_ocaml` is a command-line tool that dumps an OCaml untyped AST as JSON.
+`ocaml-ast` is a hybrid Rust-OCaml crate to parse OCaml code.
+
+`rules` contains rules developed for linting.
+
+`src/json_of_ocaml` is a command-line tool that dumps an OCaml untyped AST as JSON.
 It's the best way to interface with `ocaml-ast` without linking directly to it.
 
-`ocaml-ast` is a hybrid Rust-OCaml crate to parse OCaml code.
+`src/ocaml-syntax-check` is a command-line tool that pretty-prints any syntax error in the given file.
+It's mainly for debugging.
 
 ## Known Bugs
 
