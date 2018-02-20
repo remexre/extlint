@@ -11,6 +11,8 @@ test-data/
 
 /extlint.tar.gz
 
+facts.pl
+
 *.cmi
 *.cmx
 *.o

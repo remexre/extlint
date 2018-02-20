@@ -24,7 +24,7 @@ fn printable(ch: char) -> bool {
 
 fn symbol_char(ch: char) -> bool {
     match ch {
-        '.' | '_' => true,
+        '_' => true,
         '0'...'9' => true,
         'a'...'z' => true,
         'A'...'Z' => true,
@@ -34,7 +34,6 @@ fn symbol_char(ch: char) -> bool {
 
 fn symbol_start_char(ch: char) -> bool {
     match ch {
-        '.' => true,
         '0'...'9' => true,
         'a'...'z' => true,
         _ => false,

@@ -19,12 +19,16 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use serde::Serialize;
 
 use ast_builder::Ast;
+pub use data::Data;
 
 /// Serializes a value into Datalog literals.
 pub fn to_ast<T: Serialize>(value: &T) -> Result<Ast, SerializeError> {
-    value
-        .serialize(simplify::Serializer)
-        .map(|data| data.to_ast())
+    to_data(value).map(|data| data.to_ast())
+}
+
+/// Serializes a value into a Data.
+pub fn to_data<T: Serialize>(value: &T) -> Result<Data, SerializeError> {
+    value.serialize(simplify::Serializer)
 }
 
 /// An error during serialization.

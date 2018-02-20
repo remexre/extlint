@@ -1,11 +1,19 @@
 use ast_builder::{Ast, AstBuilder, FactBuilder};
 
+/// A normalized value being serialized.
 #[derive(Debug)]
 pub enum Data {
+    /// A primitive value, which may be serialized as either an atom or a fact.
     Prim(&'static str, String),
+
+    /// A sequence of `cons` and `nil`.
     Seq(Vec<Data>),
-    Map(Vec<(Data, Data)>),
+
+    /// A struct.
     Struct(String, Vec<Data>),
+
+    /// A tuple, which is inlined into a term list.
+    Tuple(Vec<Data>),
 }
 
 impl Data {
@@ -13,7 +21,7 @@ impl Data {
     pub fn to_ast(self) -> Ast {
         let mut ast = AstBuilder::new();
         match self {
-            Data::Seq(data) => for d in data {
+            Data::Seq(data) | Data::Tuple(data) => for d in data {
                 d.add_to_ast(&mut ast);
             },
             data => {
@@ -32,31 +40,10 @@ impl Data {
                 fact.finish()
             }
             Data::Seq(mut vals) => {
-                let mut id = {
-                    let mut fact = ast.fact("seq");
-                    fact.term("nil");
-                    fact.finish()
-                };
+                let mut id = ast.fact("nil").finish();
                 while let Some(val) = vals.pop() {
-                    let mut fact = ast.fact("seq");
-                    fact.term("cons");
+                    let mut fact = ast.fact("cons");
                     val.add_to_fact(ast, &mut fact);
-                    fact.term(id.to_string());
-                    id = fact.finish();
-                }
-                id
-            }
-            Data::Map(mut kvs) => {
-                let mut id = {
-                    let mut fact = ast.fact("map");
-                    fact.term("nil");
-                    fact.finish()
-                };
-                while let Some((k, v)) = kvs.pop() {
-                    let mut fact = ast.fact("map");
-                    fact.term("cons");
-                    k.add_to_fact(ast, &mut fact);
-                    v.add_to_fact(ast, &mut fact);
                     fact.term(id.to_string());
                     id = fact.finish();
                 }
@@ -64,6 +51,13 @@ impl Data {
             }
             Data::Struct(name, vals) => {
                 let mut fact = ast.fact(name);
+                for val in vals {
+                    val.add_to_fact(ast, &mut fact);
+                }
+                fact.finish()
+            }
+            Data::Tuple(vals) => {
+                let mut fact = ast.fact("tuple");
                 for val in vals {
                     val.add_to_fact(ast, &mut fact);
                 }
@@ -78,6 +72,9 @@ impl Data {
             Data::Prim(_name, val) => {
                 fact.term(val);
             }
+            Data::Tuple(vals) => for val in vals {
+                val.add_to_fact(ast, fact);
+            },
             data => {
                 let id = data.add_to_ast(ast);
                 fact.term(id.to_string());

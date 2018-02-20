@@ -7,6 +7,7 @@ use std::io::Error as IoError;
 use std::process::exit;
 
 use ocaml_ast::{parse, OcamlAstError};
+use serde_datalog::ast_builder::AstBuilder;
 
 fn main() {
     let matches = clap_app!((crate_name!()) =>
@@ -37,8 +38,14 @@ fn main() {
         exit(1);
     });
 
-    let ast = serde_datalog::to_ast(&ast).unwrap();
-    println!("{}", ast);
+    let mut builder = AstBuilder::new();
+    let mut fact = builder.fact("src");
+    fact.term(file.unwrap_or(""));
+    fact.term(String::from_utf8_lossy(&src));
+    serde_datalog::to_data(&ast)
+        .unwrap()
+        .add_to_ast(&mut builder);
+    println!("{}", builder.finish());
 }
 
 fn read_from(path: Option<&str>) -> Result<Vec<u8>, IoError> {

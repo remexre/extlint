@@ -10,7 +10,7 @@ impl ::serde::Serializer for Serializer {
     type Error = SerializeError;
 
     type SerializeSeq = SerializeSeq;
-    type SerializeTuple = SerializeStruct;
+    type SerializeTuple = SerializeTuple;
     type SerializeTupleStruct = SerializeStruct;
     type SerializeTupleVariant = SerializeVariant;
     type SerializeMap = SerializeMap;
@@ -148,9 +148,9 @@ impl ::serde::Serializer for Serializer {
 
     fn serialize_tuple(
         self,
-        len: usize,
+        _len: usize,
     ) -> Result<Self::SerializeTuple, Self::Error> {
-        self.serialize_tuple_struct("tuple", len)
+        Ok(SerializeTuple { data: Vec::new() })
     }
     fn serialize_tuple_struct(
         self,
@@ -203,7 +203,7 @@ impl ::serde::Serializer for Serializer {
 }
 
 pub struct SerializeMap {
-    data: Vec<(Data, Data)>,
+    data: Vec<Data>,
     last_key: Option<Data>,
 }
 
@@ -227,12 +227,34 @@ impl ::serde::ser::SerializeMap for SerializeMap {
     ) -> Result<(), Self::Error> {
         let key = self.last_key.take().unwrap();
         let value = value.serialize(Serializer)?;
-        self.data.push((key, value));
+        self.data.push(Data::Tuple(vec![key, value]));
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(Data::Map(self.data))
+        Ok(Data::Seq(self.data))
+    }
+}
+
+pub struct SerializeTuple {
+    data: Vec<Data>,
+}
+
+impl ::serde::ser::SerializeTuple for SerializeTuple {
+    type Ok = Data;
+    type Error = SerializeError;
+
+    fn serialize_element<T: Serialize + ?Sized>(
+        &mut self,
+        value: &T,
+    ) -> Result<(), Self::Error> {
+        let value = value.serialize(Serializer)?;
+        self.data.push(value);
+        Ok(())
+    }
+
+    fn end(self) -> Result<Self::Ok, Self::Error> {
+        Ok(Data::Tuple(self.data))
     }
 }
 
@@ -270,24 +292,6 @@ impl ::serde::ser::SerializeStruct for SerializeStruct {
     fn serialize_field<T: Serialize + ?Sized>(
         &mut self,
         _key: &'static str,
-        value: &T,
-    ) -> Result<(), Self::Error> {
-        let value = value.serialize(Serializer)?;
-        self.data.push(value);
-        Ok(())
-    }
-
-    fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(Data::Struct(self.name.to_string(), self.data))
-    }
-}
-
-impl ::serde::ser::SerializeTuple for SerializeStruct {
-    type Ok = Data;
-    type Error = SerializeError;
-
-    fn serialize_element<T: Serialize + ?Sized>(
-        &mut self,
         value: &T,
     ) -> Result<(), Self::Error> {
         let value = value.serialize(Serializer)?;
