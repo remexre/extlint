@@ -14,10 +14,13 @@ name = "extlint"
 repository = "https://github.com/remexre/extlint"
 version = "0.1.0"
 
+[badges]
+travis-ci = { repository = "remexre/swipl-rs" }
+
 [dependencies]
 clap = "2.29.4"
-ocaml-ast = { path = "ocaml-ast" }
-serde-datalog = { path = "serde-datalog" }
+ocaml-ast = { path = "ocaml-ast", version = "0.1.0" }
+serde-datalog = { path = "serde-datalog", version = "0.1.0" }
 serde_json = "1.0.9"
 
 [[bin]]
