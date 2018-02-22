@@ -1,3 +1,12 @@
+% Getting the text corresponding to a location.
+loc_text(LocId, Text) :-
+	'Location'(LocId, StartId, EndId, _Ghost),
+	'Position'(StartId, File, _, _, Start),
+	'Position'(EndId, File, _, _, End),
+	src(_, File, Src),
+	Len is End - Start,
+	sub_string(Src, Start, Len, _, Text).
+
 % Boolean "Literals"
 expr_false(ExprId, LocId) :-
 	'Expression'(ExprId, DescId, LocId, _Attrs),
@@ -42,6 +51,12 @@ expr_let(ExprId, Rec, PatternId, BoundId, BodyId, LocId) :-
 	let_binding(Bindings, PatternId, BoundId).
 
 % Identifiers
+expr_mod_ident(ExprId, ModName, Name, LocId) :-
+	'Expression'(ExprId, IdentId, LocId, _),
+	'ExpressionDesc'(IdentId, 'Ident', IdentLocId),
+	'Loc'(IdentLocId, LongIdentId, _),
+	'LongIdent'(LongIdentId, 'Dot', LongIdent2Id, Name),
+	'LongIdent'(LongIdent2Id, 'Ident', ModName).
 expr_ident(ExprId, Name, LocId) :-
 	'Expression'(ExprId, IdentId, LocId, _),
 	'ExpressionDesc'(IdentId, 'Ident', IdentLocId),

@@ -32,3 +32,10 @@ lint('pointer equality', Loc, 0) :- expr_ident(_, '!=', Loc).
 lint('useless let', Loc, 2) :-
 	expr_let_name(_, _, Name, _, Body, Loc),
 	expr_ident(Body, Name, _).
+
+% Dock a point for List.hd or List.tl.
+lint('List.hd', Loc, 1) :- expr_mod_ident(_, 'List', 'hd', Loc).
+lint('List.tl', Loc, 1) :- expr_mod_ident(_, 'List', 'tl', Loc).
+
+% Warn about if-then without an else.
+lint('if-then without an else', Loc, 0) :- expr_if(_, _, _, Loc).
