@@ -75,6 +75,3 @@ expr_eq(ExprId, LeftId, RightId, LocId) :-
 	cons(Args0Id, _, LeftId, Args1Id),
 	cons(Args1Id, _, RightId, Args2Id),
 	nil(Args2Id).
-
-% #use "whatever"
-dir_use(Arg, LocId).

@@ -1,3 +1,5 @@
+#use "foo.ml"
+
 open Bar
 
 let foo x =
