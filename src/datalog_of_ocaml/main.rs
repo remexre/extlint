@@ -7,6 +7,7 @@ use std::io::Error as IoError;
 use std::process::exit;
 
 use ocaml_ast::{parse, OcamlAstError};
+use serde_datalog::Data;
 use serde_datalog::ast_builder::AstBuilder;
 
 fn main() {
@@ -42,9 +43,14 @@ fn main() {
     let mut fact = builder.fact("src");
     fact.term(file.unwrap_or(""));
     fact.term(String::from_utf8_lossy(&src));
-    serde_datalog::to_data(&ast)
-        .unwrap()
-        .add_to_ast(&mut builder);
+    match serde_datalog::to_data(&ast).unwrap() {
+        Data::Seq(data) | Data::Tuple(data) => for d in data {
+            d.add_to_ast(&mut builder);
+        },
+        data => {
+            data.add_to_ast(&mut builder);
+        }
+    }
     println!("{}", builder.finish());
 }
 

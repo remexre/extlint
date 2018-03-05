@@ -7,6 +7,10 @@ loc_text(LocId, Text) :-
 	Len is End - Start,
 	sub_string(Src, Start, Len, _, Text).
 
+% Getting the location and text of an Expression.
+expr_loc(Expr, LocId) :- 'Expression'(Expr, _, LocId, _).
+expr_text(Expr, Text) :- expr_loc(Expr, Loc), loc_text(Loc, Text).
+
 % Boolean "Literals"
 expr_false(ExprId, LocId) :-
 	'Expression'(ExprId, DescId, LocId, _Attrs),
@@ -71,3 +75,6 @@ expr_eq(ExprId, LeftId, RightId, LocId) :-
 	cons(Args0Id, _, LeftId, Args1Id),
 	cons(Args1Id, _, RightId, Args2Id),
 	nil(Args2Id).
+
+% #use "whatever"
+dir_use(Arg, LocId).

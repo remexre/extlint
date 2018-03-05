@@ -1,5 +1,9 @@
+open Bar
+
 let foo x =
     if x = false then true else false
+
+let quux asdf = asdf = true
 
 let bar x y =
     if x then
@@ -13,4 +17,4 @@ let baz = function
 
 let quux =
     if 1 = 2 then
-        print_endline "Asploding"
+        1
