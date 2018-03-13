@@ -42,7 +42,9 @@ fn symbol_start_char(ch: char) -> bool {
 
 fn prolog_char(ch: char, fmt: &mut Formatter) -> FmtResult {
     let n = ch as u32;
-    if printable(ch) {
+    if ch == '\'' || ch == '\\' {
+        write!(fmt, "\\{}", ch)
+    } else if printable(ch) {
         write!(fmt, "{}", ch)
     } else if n <= 0xffff {
         write!(fmt, "\\u{:04x}", n)

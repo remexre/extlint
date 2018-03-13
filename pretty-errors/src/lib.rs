@@ -4,6 +4,9 @@ extern crate ansi_term;
 #[macro_use]
 extern crate lazy_static;
 
+#[cfg(test)]
+mod tests;
+
 use std::borrow::Cow;
 use std::cmp::max;
 use std::fmt::{Display, Formatter, Result as FmtResult, Write};
@@ -33,7 +36,7 @@ impl<'a> Message<'a> {
         self.start_bar(fmt)?;
         write!(fmt, " ")?;
         if let Some(n) = n {
-            write!(fmt, "{0:>01$}", n, self.barlen)?;
+            write!(fmt, "{0:>1$}", n, self.barlen)?;
         } else {
             Message::spaces(fmt, self.barlen)?;
         }
@@ -80,10 +83,11 @@ impl<'a> Message<'a> {
         path: Option<&'a str>,
         src: &'a str,
     ) -> Message<'a> {
+        let barlen = ((max(start.0, end.0) + 2) as f32).log10().ceil();
         Message {
             #[cfg(feature = "color")]
             color: false,
-            barlen: ((max(start.0, end.0) + 1) as f32).log10().ceil() as usize,
+            barlen: barlen as usize,
             start,
             end,
             path,
