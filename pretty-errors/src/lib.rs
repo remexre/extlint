@@ -1,9 +1,15 @@
+#[cfg(feature = "color")]
+extern crate ansi_term;
+#[cfg(feature = "color")]
+#[macro_use]
+extern crate lazy_static;
+
 use std::borrow::Cow;
 use std::cmp::max;
 use std::fmt::{Display, Formatter, Result as FmtResult, Write};
 use std::ops::Range;
 
-#[cfg(feature = "ansi_term")]
+#[cfg(feature = "color")]
 use ansi_term::{Colour, Style};
 
 /// A helper struct for rendering a message attached to a span of source code.
@@ -12,6 +18,7 @@ use ansi_term::{Colour, Style};
 /// range of `src`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Message<'a> {
+    #[cfg(feature = "color")] pub color: bool,
     pub path: Option<&'a str>,
     pub text: Cow<'a, str>,
 
@@ -23,7 +30,7 @@ pub struct Message<'a> {
 
 impl<'a> Message<'a> {
     fn bar(&self, fmt: &mut Formatter, n: Option<usize>) -> FmtResult {
-        Message::start_bar(fmt)?;
+        self.start_bar(fmt)?;
         write!(fmt, " ")?;
         if let Some(n) = n {
             write!(fmt, "{0:>01$}", n, self.barlen)?;
@@ -31,7 +38,7 @@ impl<'a> Message<'a> {
             Message::spaces(fmt, self.barlen)?;
         }
         write!(fmt, " | ")?;
-        Message::end_bar(fmt)
+        self.end_bar(fmt)
     }
 
     fn barln(&self, fmt: &mut Formatter) -> FmtResult {
@@ -64,7 +71,9 @@ impl<'a> Message<'a> {
         Ok(())
     }
 
-    pub(crate) fn new(
+    /// Creates a new Message. `start` and `end` *MUST* be within bounds, or
+    /// panics will abound.
+    pub fn new(
         start: (usize, usize),
         end: (usize, usize),
         text: Cow<'a, str>,
@@ -72,6 +81,8 @@ impl<'a> Message<'a> {
         src: &'a str,
     ) -> Message<'a> {
         Message {
+            #[cfg(feature = "color")]
+            color: false,
             barlen: ((max(start.0, end.0) + 1) as f32).log10().ceil() as usize,
             start,
             end,
@@ -84,48 +95,71 @@ impl<'a> Message<'a> {
     fn spaces(fmt: &mut Formatter, n: usize) -> FmtResult {
         Message::multiple(fmt, ' ', n)
     }
+
+    /// Enables color.
+    #[cfg(feature = "color")]
+    pub fn with_color(&mut self) -> &mut Self {
+        self.color = true;
+        self
+    }
 }
 
-#[cfg(feature = "ansi_term")]
+#[cfg(feature = "color")]
 lazy_static!{
     static ref BAR_STYLE: Style = Style::new().bold().fg(Colour::Blue);
     static ref ERROR_STYLE: Style = Style::new().bold().fg(Colour::Red);
 }
 
-#[cfg(feature = "ansi_term")]
+#[cfg(feature = "color")]
 impl<'a> Message<'a> {
-    fn start_bar(fmt: &mut Formatter) -> FmtResult {
-        BAR_STYLE.prefix().fmt(fmt)
+    fn start_bar(&self, fmt: &mut Formatter) -> FmtResult {
+        if self.color {
+            BAR_STYLE.prefix().fmt(fmt)
+        } else {
+            Ok(())
+        }
     }
 
-    fn end_bar(fmt: &mut Formatter) -> FmtResult {
-        BAR_STYLE.suffix().fmt(fmt)
+    fn end_bar(&self, fmt: &mut Formatter) -> FmtResult {
+        if self.color {
+            BAR_STYLE.suffix().fmt(fmt)
+        } else {
+            Ok(())
+        }
     }
 
-    fn start_error(fmt: &mut Formatter) -> FmtResult {
-        ERROR_STYLE.prefix().fmt(fmt)
+    fn start_error(&self, fmt: &mut Formatter) -> FmtResult {
+        if self.color {
+            ERROR_STYLE.prefix().fmt(fmt)
+        } else {
+            Ok(())
+        }
     }
 
-    fn end_error(fmt: &mut Formatter) -> FmtResult {
-        ERROR_STYLE.suffix().fmt(fmt)
+    fn end_error(&self, fmt: &mut Formatter) -> FmtResult {
+        if self.color {
+            ERROR_STYLE.suffix().fmt(fmt)
+        } else {
+            Ok(())
+        }
     }
 }
 
-#[cfg(not(feature = "ansi_term"))]
+#[cfg(not(feature = "color"))]
 impl<'a> Message<'a> {
-    fn start_bar(fmt: &mut Formatter) -> FmtResult {
+    fn start_bar(&self, fmt: &mut Formatter) -> FmtResult {
         Ok(())
     }
 
-    fn end_bar(fmt: &mut Formatter) -> FmtResult {
+    fn end_bar(&self, fmt: &mut Formatter) -> FmtResult {
         Ok(())
     }
 
-    fn start_error(fmt: &mut Formatter) -> FmtResult {
+    fn start_error(&self, fmt: &mut Formatter) -> FmtResult {
         Ok(())
     }
 
-    fn end_error(fmt: &mut Formatter) -> FmtResult {
+    fn end_error(&self, fmt: &mut Formatter) -> FmtResult {
         Ok(())
     }
 }
@@ -135,9 +169,9 @@ impl<'a> Display for Message<'a> {
         // Draw the arrow for the file name, if present.
         if let Some(path) = self.path {
             Message::spaces(fmt, self.barlen + 1)?;
-            Message::start_bar(fmt)?;
+            self.start_bar(fmt)?;
             write!(fmt, "-->")?;
-            Message::end_bar(fmt)?;
+            self.end_bar(fmt)?;
             writeln!(fmt, " {}:{}:{}", path, self.start.0, self.start.1)?;
         }
 
@@ -149,7 +183,7 @@ impl<'a> Display for Message<'a> {
             if l == self.start.0 {
                 self.bar(fmt, None)?;
                 Message::spaces(fmt, self.start.1)?;
-                Message::start_error(fmt)?;
+                self.start_error(fmt)?;
                 if self.start.0 == self.end.0 {
                     let l = self.end.1 - self.start.1;
                     Message::multiple(
@@ -162,7 +196,7 @@ impl<'a> Display for Message<'a> {
                     writeln!(fmt, "^")?;
                     // TODO
                 }
-                Message::end_error(fmt)?;
+                self.end_error(fmt)?;
             }
         }
         self.bar(fmt, None)

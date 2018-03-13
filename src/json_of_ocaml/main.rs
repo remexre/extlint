@@ -29,7 +29,7 @@ fn main() {
             OcamlAstError::OcamlParse(err) => {
                 if !matches.is_present("SILENT") {
                     let src = String::from_utf8_lossy(&src);
-                    eprintln!("{}", err.as_msg(&src));
+                    eprintln!("{}", err.as_msg(&src).with_color());
                 }
             }
             _ => {

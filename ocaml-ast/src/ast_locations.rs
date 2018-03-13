@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp::max;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 
-use message::Message;
+use pretty_errors::Message;
 
 /// A location-annotated value.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

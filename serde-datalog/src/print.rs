@@ -92,7 +92,11 @@ fn sparkly_facts(
     facts: &[Vec<String>],
     fmt: &mut Formatter,
 ) -> FmtResult {
-    for terms in facts {
+    let mut indices = (0..facts.len()).collect::<Vec<_>>();
+    indices.sort_by_key(|&i| facts[i].len());
+
+    for i in indices {
+        let terms = &facts[i];
         sparkly_fact(functor, terms, fmt)?;
     }
     Ok(())

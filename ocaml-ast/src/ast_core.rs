@@ -152,8 +152,7 @@ pub struct Case {
 pub struct ValueDescription {
     pub name: Loc<String>,
 
-    #[serde(rename = "type")]
-    pub type_: CoreType,
+    #[serde(rename = "type")] pub type_: CoreType,
 
     pub prim: Vec<String>,
 

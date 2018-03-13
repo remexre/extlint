@@ -8,14 +8,11 @@
 //! string across the AST boundary. It's not ideal...
 // #![warn(missing_docs)]
 
-#[cfg(feature = "ansi_term")]
-extern crate ansi_term;
 extern crate either;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
-#[macro_use]
-extern crate lazy_static;
+extern crate pretty_errors;
 #[macro_use]
 extern crate serde_derive;
 #[cfg_attr(test, macro_use)]
@@ -30,7 +27,6 @@ mod ast_misc;
 mod ast_module;
 mod ast_toplevel;
 mod ffi;
-mod message;
 
 #[cfg(test)]
 mod tests;
@@ -47,7 +43,6 @@ pub use ast_locations::*;
 pub use ast_misc::*;
 pub use ast_module::*;
 pub use ast_toplevel::*;
-pub use message::*;
 
 /// Errors returned from this crate.
 #[derive(Debug, Fail)]

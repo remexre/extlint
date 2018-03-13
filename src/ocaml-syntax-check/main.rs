@@ -30,7 +30,7 @@ fn main() {
         match err {
             OcamlAstError::OcamlParse(err) => {
                 let src = String::from_utf8_lossy(&src);
-                eprintln!("{}", err.as_msg(&src));
+                eprintln!("{}", err.as_msg(&src).with_color());
             }
             _ => {
                 eprintln!("Couldn't parse {}", file);
