@@ -13,7 +13,7 @@ homepage = "https://github.com/remexre/extlint"
 license = "Apache-2.0/MIT"
 name = "extlint"
 repository = "https://github.com/remexre/extlint"
-version = "0.1.0"
+version = "0.1.1"
 
 [badges]
 travis-ci = { repository = "remexre/swipl-rs" }

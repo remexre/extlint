@@ -1,7 +1,3 @@
-todo(Msg) :-
-	write("TODO: "), write(Msg), nl,
-	!, fail.
-
 % The lint/4 predicate is:
 %
 % lint(+Name, ?Points, -LocId, -AuxData).
@@ -63,12 +59,15 @@ long_desc('equality with true', Loc, Expr, Desc) :-
 	swritef(Desc, "Instead of `%w`, try writing `%w`.",
 		[BadText, ExprText]).
 long_desc('redundant if', Loc, Cond, Desc) :-
-	todo('redundant if').
+	loc_text(Loc, BadText),
+	expr_text(Cond, CondText),
+	swritef(Desc, "Instead of `%w`, try writing `%w`.",
+		[BadText, CondText]).
 long_desc('pointer equality', Loc, Oper, Desc) :-
 	loc_text(Loc, BadText),
 	swritef(Desc, "`%w` is pointer comparison -- you might want `%w` instead.",
 		[BadText, Oper]).
-long_desc('useless let', Loc, [Name, Bound], Desc) :-
+long_desc('useless let', _, [Name, Bound], Desc) :-
 	expr_text(Bound, BoundText),
 	swritef(Desc, "The `%w` variable is useless -- just write `%w`.",
 		[Name, BoundText]).
@@ -76,5 +75,5 @@ long_desc('partial list function', Loc, _, Desc) :-
 	loc_text(Loc, Fn),
 	swritef(Desc, "Instead of the `%w` function, use pattern matching.",
 		[Fn]).
-long_desc('if-then without an else', Loc, _, Desc) :-
+long_desc('if-then without an else', _, _, Desc) :-
 	swritef(Desc, "You probably don't want to have an if-then without an else.").

@@ -25,20 +25,20 @@ test-static:
 
 package: build
 	mkdir -p dist/bin dist/rules
-	install -s target/release/datalog_of_ocaml dist/bin
-	install -s target/release/extlint_render_error dist/bin
-	install -s target/release/get-gitgrade-repos dist/bin
-	install -s target/release/json_of_ocaml dist/bin
-	install -s target/release/ocaml-syntax-check dist/bin
+	install target/release/datalog_of_ocaml dist/bin
+	install target/release/extlint_render_error dist/bin
+	install target/release/get-gitgrade-repos dist/bin
+	install target/release/json_of_ocaml dist/bin
+	install target/release/ocaml-syntax-check dist/bin
 	find rules -type f -exec install {} dist/{} \;
 	tar -czf extlint.tar.gz -C dist bin rules
 package-static: build-static
 	mkdir -p dist/bin dist/rules
-	install -s target/x86_64-unknown-linux-musl/release/datalog_of_ocaml dist/bin
-	install -s target/x86_64-unknown-linux-musl/release/extlint_render_error dist/bin
-	install -s target/x86_64-unknown-linux-musl/release/get-gitgrade-repos dist/bin
-	install -s target/x86_64-unknown-linux-musl/release/json_of_ocaml dist/bin
-	install -s target/x86_64-unknown-linux-musl/release/ocaml-syntax-check dist/bin
+	install target/x86_64-unknown-linux-musl/release/datalog_of_ocaml dist/bin
+	install target/x86_64-unknown-linux-musl/release/extlint_render_error dist/bin
+	install target/x86_64-unknown-linux-musl/release/get-gitgrade-repos dist/bin
+	install target/x86_64-unknown-linux-musl/release/json_of_ocaml dist/bin
+	install target/x86_64-unknown-linux-musl/release/ocaml-syntax-check dist/bin
 	find rules -type f -exec install {} dist/{} \;
 	tar -czf extlint.tar.gz -C dist bin rules
 

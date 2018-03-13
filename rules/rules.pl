@@ -1,8 +1,3 @@
-% Gets all the lines corresponding to the file a location is from.
-loc_lines(LocId, Lines) :-
-	loc_src(LocId, Src),
-	split_string(Src, "\n", "", Lines).
-
 % Getting the text corresponding to a location.
 loc_text(LocId, Text) :-
 	'Location'(LocId, StartId, EndId, _Ghost),

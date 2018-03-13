@@ -12,6 +12,7 @@ generateLint(Lint) :-
 
 extlintMain(OutPath) :-
 	!,
+	set_prolog_flag(unknown, warning),
 	findall(Lint, generateLint(Lint), Lints),
 	open(OutPath, write, OutFile),
 	src(0, Path, Src),
