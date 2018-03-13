@@ -57,14 +57,14 @@ impl<'a> Message<'a> {
     fn line_range(&self) -> Range<usize> {
         assert!(self.start.0 <= self.end.0);
         let mut start = self.start.0;
-        let mut end = self.end.0 + 1;
+        let mut end = self.end.0;
         if start > 1 {
             start -= 1;
         }
         if end < self.src.lines().count() {
             end += 1;
         }
-        start..end
+        start..(end + 1)
     }
 
     fn multiple(fmt: &mut Formatter, ch: char, n: usize) -> FmtResult {
@@ -184,23 +184,32 @@ impl<'a> Display for Message<'a> {
             self.bar(fmt, Some(l))?;
             let line = self.line(l);
             writeln!(fmt, "{}", line)?;
-            if l == self.start.0 {
+            if l >= self.start.0 && l <= self.end.0 {
                 self.bar(fmt, None)?;
-                Message::spaces(fmt, self.start.1)?;
                 self.start_error(fmt)?;
-                if self.start.0 == self.end.0 {
-                    let l = self.end.1 - self.start.1;
-                    Message::multiple(
-                        fmt,
-                        '^',
-                        if l == 0 { 1 } else { l - 1 },
-                    )?;
-                    writeln!(fmt, "^ {}", self.text)?;
+                if l == self.start.0 {
+                    Message::spaces(fmt, self.start.1)?;
+                    if l == self.end.0 {
+                        let len = self.end.1 - self.start.1;
+                        Message::multiple(
+                            fmt,
+                            '^',
+                            if len == 0 { 0 } else { len - 1 },
+                        )?;
+                        write!(fmt, "^ {}", self.text)?;
+                    } else {
+                        Message::multiple(fmt, '^', line.len() - self.start.1)?;
+                    }
                 } else {
-                    writeln!(fmt, "^")?;
-                    // TODO
+                    if l == self.end.0 {
+                        Message::multiple(fmt, '^', self.end.1)?;
+                        write!(fmt, " {}", self.text)?;
+                    } else {
+                        Message::multiple(fmt, '^', line.len())?;
+                    }
                 }
                 self.end_error(fmt)?;
+                writeln!(fmt)?;
             }
         }
         self.bar(fmt, None)

@@ -35,6 +35,31 @@ fn multiline() {
         Message::new((2, 2), (3, 4), Cow::Borrowed("foo"), None, EXAMPLE_CODE);
     assert_eq!(
         m.to_string(),
-        "   | \n 2 | Line 2\n   |   ^^^^\n 3 | Line 3\n   | ^^^^ foo\n 4 | Line 4\n   | "
+        "   | \n 1 | Line 1\n 2 | Line 2\n   |   ^^^^\n 3 | Line 3\n   | ^^^^ foo\n 4 | Line 4\n   | "
+    );
+}
+
+#[test]
+fn multilines() {
+    let m =
+        Message::new((2, 2), (4, 4), Cow::Borrowed("bar"), None, EXAMPLE_CODE);
+    assert_eq!(
+        m.to_string(),
+        "   | \n 1 | Line 1\n 2 | Line 2\n   |   ^^^^\n 3 | Line 3\n   | ^^^^^^\n 4 | Line 4\n   | ^^^^ bar\n 5 | Line 5\n   | "
+    );
+}
+
+#[test]
+fn point() {
+    let m = Message::new(
+        (2, 2),
+        (2, 2),
+        Cow::Borrowed("point!"),
+        None,
+        EXAMPLE_CODE,
+    );
+    assert_eq!(
+        m.to_string(),
+        "   | \n 1 | Line 1\n 2 | Line 2\n   |   ^ point!\n 3 | Line 3\n   | "
     );
 }
