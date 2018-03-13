@@ -24,19 +24,23 @@ test-static:
 	cargo test --all {{cargo_static_flags}} --release
 
 package: build
-	mkdir -p dist/bin
+	mkdir -p dist/bin dist/rules
+	install -s target/release/datalog_of_ocaml dist/bin
 	install -s target/release/extlint_render_error dist/bin
 	install -s target/release/get-gitgrade-repos dist/bin
 	install -s target/release/json_of_ocaml dist/bin
 	install -s target/release/ocaml-syntax-check dist/bin
-	tar -czf extlint.tar.gz -C dist bin
+	find rules -type f -exec install {} dist/{} \;
+	tar -czf extlint.tar.gz -C dist bin rules
 package-static: build-static
-	mkdir -p dist/bin
+	mkdir -p dist/bin dist/rules
+	install -s target/x86_64-unknown-linux-musl/release/datalog_of_ocaml dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/extlint_render_error dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/get-gitgrade-repos dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/json_of_ocaml dist/bin
 	install -s target/x86_64-unknown-linux-musl/release/ocaml-syntax-check dist/bin
-	tar -czf extlint.tar.gz -C dist bin
+	find rules -type f -exec install {} dist/{} \;
+	tar -czf extlint.tar.gz -C dist bin rules
 
 test-on-previous-class CLASS: build
 	@mkdir -p test-data/{{CLASS}}
