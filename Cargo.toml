@@ -1,9 +1,7 @@
 [workspace]
 members = [
 	"get-gitgrade-repos",
-	"ocaml-ast",
 	"pretty-errors",
-	"serde-datalog",
 ]
 
 [package]
@@ -20,30 +18,16 @@ travis-ci = { repository = "remexre/swipl-rs" }
 
 [dependencies]
 clap = "2.29.4"
-ocaml-ast = { path = "ocaml-ast", version = "0.1.0" }
+failure = "0.1.1"
 pretty-errors = { path = "pretty-errors" , version = "0.1.0" }
 serde = "1.0.30"
-serde-datalog = { path = "serde-datalog", version = "0.1.0" }
+serde_derive = "1.0.30"
 serde_json = "1.0.9"
 structopt = "0.2.5"
-serde_derive = "1.0.30"
-failure = "0.1.1"
-
-[[bin]]
-name = "datalog_of_ocaml"
-path = "src/datalog_of_ocaml/main.rs"
 
 [[bin]]
 name = "extlint_render_error"
 path = "src/extlint_render_error/main.rs"
-
-[[bin]]
-name = "json_of_ocaml"
-path = "src/json_of_ocaml/main.rs"
-
-[[bin]]
-name = "ocaml-syntax-check"
-path = "src/ocaml-syntax-check/main.rs"
 
 [patch.crates-io]
 # https://github.com/remexre/extlint/issues/2

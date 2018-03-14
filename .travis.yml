@@ -1,22 +1,22 @@
-language: generic
-services: docker
+language: rust
 addons:
   apt:
+    sources:
+    - avsm
     packages:
-    - docker-ce
+    - ocaml
+    - opam
 os: linux
 
-before_install:
-- docker pull base/archlinux
-- docker run --detach --name=extlint-build --volume=$TRAVIS_BUILD_DIR:/code base/archlinux bash -c "while true; do sleep 60; done"
 install:
-- docker exec -w /code extlint-build bash .travis/install-dependencies.sh
+- opam init -a
+- eval `opam config env`
+- opam switch 4.06.0
+- eval `opam config env`
+- opam install -y core ocamlfind ocaml-compiler-libs
 
 script:
-- docker exec -w /code extlint-build bash .travis/package.sh
-- docker cp extlint-build:/code/extlint.tar.gz extlint.tar.gz
-after_script:
-- docker stop -t 1 extlint-build
+- make
 
 deploy:
   provider: releases

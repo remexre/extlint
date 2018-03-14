@@ -1,0 +1,6 @@
+S .
+B _build
+PKG core
+PKG ocaml-compiler-libs.common
+PKG ppx_let
+EXT nonrec

@@ -10,6 +10,9 @@ target/
 test-data/
 
 /extlint.tar.gz
+/ocaml_ast/_build
+/ocaml_ast/main.byte
+/ocaml_ast/main.native
 
 facts.pl
 
