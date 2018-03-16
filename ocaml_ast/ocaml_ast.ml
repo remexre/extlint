@@ -1,1117 +1,986 @@
-(* This module parses an AST and converts it to a JSON string, since I trust
- * shipping a string over two FFIs a lot more than a complex tree.
- *)
-
-open Asttypes
-open Longident
-open Parsetree
-
-(* The basic JSON type. *)
-type json =
-| Array of json list
-| Bool of bool
-| Int of int
-| Null
-| Object of (string * json) list
-| String of string
-
-(* Composition. *)
-let (%) : 'a 'b 'c. ('b -> 'c) -> ('a -> 'b) -> 'a -> 'c =
-    (fun f g x -> f (g x))
-
-(* Reverse composition. *)
-let (%%) : 'a 'b 'c. ('a -> 'b) -> ('b -> 'c) -> 'a -> 'c =
-    (fun f g x -> g (f x))
-
-(* Places commas between strings. *)
-let comma_sep : string list -> string =
-    let or_empty = function
-    | Some(s) -> s
-    | None -> ""
-    in
-    let combine (a: string option) (b: string) : string option =
-        match a with
-        | Some(a) -> Some(a ^ "," ^ b)
-        | None -> Some(b)
-    in List.fold_left combine None %% or_empty
-
-(* Escapes a string according to JSON rules. *)
-let escape_string (s: string) : string =
-    let escape_char (ch: char) : string =
-    match Char.code ch with
-    |  0 -> "\\u0000"
-    |  1 -> "\\u0001"
-    |  2 -> "\\u0002"
-    |  3 -> "\\u0003"
-    |  4 -> "\\u0004"
-    |  5 -> "\\u0005"
-    |  6 -> "\\u0006"
-    |  7 -> "\\u0007"
-    |  8 -> "\\b"
-    |  9 -> "\\t"
-    | 10 -> "\\n"
-    | 11 -> "\\u000b"
-    | 12 -> "\\f"
-    | 13 -> "\\r"
-    | 14 -> "\\u000e"
-    | 15 -> "\\u000f"
-    | 16 -> "\\u0010"
-    | 17 -> "\\u0011"
-    | 18 -> "\\u0012"
-    | 19 -> "\\u0013"
-    | 20 -> "\\u0014"
-    | 21 -> "\\u0015"
-    | 22 -> "\\u0016"
-    | 23 -> "\\u0017"
-    | 24 -> "\\u0018"
-    | 25 -> "\\u0019"
-    | 26 -> "\\u001a"
-    | 27 -> "\\u001b"
-    | 28 -> "\\u001c"
-    | 29 -> "\\u001d"
-    | 30 -> "\\u001e"
-    | 31 -> "\\u001f"
-    | 34 -> "\\\""
-    | 92 -> "\\\\"
-    | ch -> String.make 1 (Char.chr ch)
-    in
-    let explode (s: string) : char list =
-      let rec expl i l =
-        if i < 0 then l else
-        expl (i - 1) (s.[i] :: l) in
-      expl (String.length s - 1) []
-    in
-    let quote (s: string) : string =
-        "\"" ^ s ^ "\""
-    in
-    explode s
-    |> List.map escape_char
-    |> String.concat ""
-    |> quote
-
-(* Converts the JSON to a string. *)
-let rec string_of_json = function
-| Array(a) -> "[" ^ comma_sep (List.map string_of_json a) ^ "]"
-| Bool(b) -> string_of_bool b
-| Int(i) -> string_of_int(i)
-| Null -> "null"
-| Object(o) -> let helper (n, v) = escape_string n ^ ":" ^ string_of_json v in
-                   "{" ^ comma_sep (List.map helper o) ^ "}"
-| String(s) -> escape_string s
-
-let json_of_option f = function
-| Some(x) -> f x
-| None -> Null
-
-let json_of_list f xs = Array(List.map f xs)
-let json_of_pair f g (x, y) = Array([f x; g y])
-let json_of_triple f g h (x, y, z) = Array([f x; g y; h z])
-
-let json_of_string s = String(s)
-let json_of_char = json_of_string % String.make 1
-
-let variant (ty: string) (value: json) : json =
-    Object([
-        ("type", String(ty));
-        ("value", value);
-    ])
-
-(*****************************************************************************)
-(********************************* AST TYPES *********************************)
-(*****************************************************************************)
-
-let rec json_of_rec_flag = function
-| Nonrecursive -> Bool(false)
-| Recursive -> Bool(true)
-
-and json_of_direction_flag = function
-| Upto -> Bool(true)
-| Downto -> Bool(false)
-
-and json_of_private_flag = function
-| Private -> Bool(true)
-| Public -> Bool(false)
-
-and json_of_mutable_flag = function
-| Immutable -> Bool(false)
-| Mutable -> Bool(true)
-
-and json_of_virtual_flag = function
-| Virtual -> Bool(true)
-| Concrete -> Bool(false)
-
-and json_of_override_flag = function
-| Override -> Bool(true)
-| Fresh -> Bool(false)
-
-and json_of_closed_flag = function
-| Closed -> Bool(true)
-| Open -> Bool(false)
-
-and json_of_label : label -> json = json_of_string
-
-and json_of_arg_label = function
-| Nolabel -> variant "NoLabel" Null
-| Labelled s -> variant "Labelled" @@ String(s)
-| Optional s -> variant "Optional" @@ String(s)
-
-and json_of_variance = function
-| Covariant -> String("Covariant")
-| Contravariant -> String("Contravariant")
-| Invariant -> String("Invariant")
-
-(*****************************************************************************)
-(********************************** LOCATIONS ********************************)
-(*****************************************************************************)
-
-let rec json_of_position (pos: Lexing.position) : json =
-    Object([
-        ("filename", String(pos.pos_fname));
-        ("line", Int(pos.pos_lnum));
-        ("column", Int(pos.pos_cnum - pos.pos_bol));
-        ("offset", Int(pos.pos_cnum));
-    ])
-
-and json_of_location (loc: Location.t) : json =
-    Object([
-        ("start", json_of_position loc.loc_start);
-        ("end", json_of_position loc.loc_end);
-        ("ghost", Bool(loc.loc_ghost));
-    ])
-
-and json_of_loc (f: 'a -> json) (x: 'a loc) : json =
-    Object([
-        ("txt", f x.txt);
-        ("location", json_of_location x.loc);
-    ])
-
-(*****************************************************************************)
-(********************************* PARSE TREE ********************************)
-(*****************************************************************************)
-
-let rec json_of_constant = function
-| Pconst_integer(str, suffix) ->
-        variant "Integer" @@ Array([
-            String(str);
-            json_of_option json_of_char suffix;
-        ])
-| Pconst_char(c) -> variant "Char" @@ String(String.make 1 c)
-| Pconst_string(str, suffix) ->
-        variant "String" @@ Array([
-            String(str);
-            json_of_option json_of_string suffix;
-        ])
-| Pconst_float(str, suffix) ->
-        variant "Float" @@ Array([
-            String(str);
-            json_of_option json_of_char suffix;
-        ])
-
-and json_of_long_ident = function
-| Lident(s) -> variant "Ident" @@ json_of_string s
-| Ldot(i, s) -> variant "Dot" @@ Array([json_of_long_ident i; json_of_string s])
-| Lapply(l, r) ->
-    variant "Apply" @@ Array([
-        json_of_long_ident l;
-        json_of_long_ident r;
-    ])
-
-(*****************************************************************************)
-(****************************** EXTENSION POINTS *****************************)
-(*****************************************************************************)
-
-and json_of_attribute (attr: attribute) =
-    json_of_pair (json_of_loc json_of_string) json_of_payload attr
-
-and json_of_extension (ext: extension) =
-    json_of_pair (json_of_loc json_of_string) json_of_payload ext
-
-and json_of_attributes (attrs: attributes) : json =
-    json_of_list json_of_attribute attrs
-
-and json_of_payload = function
-| PStr(s) -> variant "Structure" @@ json_of_structure s
-| PSig(s) -> variant "Signature" @@ json_of_signature s
-| PTyp(s) -> variant "Type" @@ json_of_core_type s
-| PPat(p, e) ->
-    variant "Pattern" @@ Array([
-        json_of_pattern p;
-        json_of_option json_of_expression e;
-    ])
-
-(*****************************************************************************)
-(******************************** CORE LANGUAGE ******************************)
-(*****************************************************************************)
-
-and json_of_core_type (ct: core_type) : json =
-    Object([
-        ("desc", json_of_core_type_desc ct.ptyp_desc);
-        ("location", json_of_location ct.ptyp_loc);
-        ("attributes", json_of_attributes ct.ptyp_attributes);
-    ])
-
-and json_of_core_type_desc = function
-| Ptyp_any -> variant "Any" Null
-| Ptyp_var(s) -> variant "Var" @@ json_of_string s
-| Ptyp_arrow(a, l, r) ->
-    variant "Arrow" @@ Array([
-        json_of_arg_label a;
-        json_of_core_type l;
-        json_of_core_type r;
-    ])
-| Ptyp_tuple(ts) -> variant "Tuple" @@ json_of_list json_of_core_type ts
-| Ptyp_constr(a, ts) ->
-    variant "Constr" @@ Array([
-        json_of_loc json_of_long_ident a;
-        json_of_list json_of_core_type ts;
-    ])
-| Ptyp_object(fs, c) ->
-    variant "Object" @@ Array([
-        json_of_list json_of_object_field fs;
-        json_of_closed_flag c;
-    ])
-| Ptyp_class(l, ts) ->
-    variant "Class" @@ Array([
-        json_of_loc json_of_long_ident l;
-        json_of_list json_of_core_type ts;
-    ])
-| Ptyp_alias(t, s) ->
-    variant "Alias" @@ Array([
-        json_of_core_type t;
-        json_of_string s;
-    ])
-| Ptyp_variant(vs, c, ls) ->
-    variant "Variant" @@ Array([
-        json_of_list json_of_row_field vs;
-        json_of_closed_flag c;
-        json_of_option (json_of_list json_of_label) ls;
-    ])
-| Ptyp_poly(vs, t) ->
-    variant "Poly" @@ Array([
-        json_of_list (json_of_loc json_of_string) vs;
-        json_of_core_type t;
-    ])
-| Ptyp_package(e) -> variant "Package" @@ json_of_package_type e
-| Ptyp_extension(e) -> variant "Extension" @@ json_of_extension e
-
-and json_of_package_type (pt: package_type) : json =
-    json_of_pair
-        (json_of_loc json_of_long_ident)
-        (json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_core_type))
-        pt
-
-and json_of_row_field : row_field -> json = function
-| Rtag(lbl, attrs, b, tys) ->
-    variant "Tag" @@ Array([
-        json_of_loc json_of_label lbl;
-        json_of_attributes attrs;
-        Bool(b);
-        json_of_list json_of_core_type tys;
-    ])
-| Rinherit(t) -> variant "Inherit" @@ json_of_core_type t
-
-and json_of_object_field = function
-| Otag(n, a, t) ->
-    variant "Tag" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_attributes a;
-        json_of_core_type t;
-    ])
-| Oinherit(t) -> variant "Inherit" @@ json_of_core_type t
-
-and json_of_pattern (pat: pattern) : json =
-    Object([
-        ("desc", json_of_pattern_desc pat.ppat_desc);
-        ("location", json_of_location pat.ppat_loc);
-        ("attributes", json_of_attributes pat.ppat_attributes);
-    ])
-
-and json_of_pattern_desc = function
-| Ppat_any -> variant "Any" Null
-| Ppat_var(n) -> variant "Var" @@ json_of_loc json_of_string n
-| Ppat_alias(p, n) ->
-    variant "Alias" @@ Array([
-        json_of_pattern p;
-        json_of_loc json_of_string n;
-    ])
-| Ppat_constant(c) -> variant "Constant" @@ json_of_constant c
-| Ppat_interval(f, t) ->
-    variant "Interval" @@ Array([
-        json_of_constant f;
-        json_of_constant t;
-    ])
-| Ppat_tuple(ps) -> variant "Tuple" @@ json_of_list json_of_pattern ps
-| Ppat_construct(n, p) ->
-    variant "Construct" @@ Array([
-        json_of_loc json_of_long_ident n;
-        json_of_option json_of_pattern p;
-    ])
-| Ppat_variant(n, p) ->
-    variant "Variant" @@ Array([
-        json_of_string n;
-        json_of_option json_of_pattern p;
-    ])
-| Ppat_record(ms, closed) ->
-    variant "Record" @@ Array([
-        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_pattern) ms;
-        json_of_closed_flag closed;
-    ])
-| Ppat_array(ps) -> variant "Array" @@ json_of_list json_of_pattern ps
-| Ppat_or(l, r) ->
-    variant "Or" @@ Array([
-        json_of_pattern l;
-        json_of_pattern r;
-    ])
-| Ppat_constraint(p, t) ->
-    variant "Constraint" @@ Array([
-        json_of_pattern p;
-        json_of_core_type t;
-    ])
-| Ppat_type(t) -> variant "Type" @@ json_of_loc json_of_long_ident t
-| Ppat_lazy(p) -> variant "Lazy" @@ json_of_pattern p
-| Ppat_unpack(s) -> variant "Unpack" @@ json_of_loc json_of_string s
-| Ppat_exception(p) -> variant "Exception" @@ json_of_pattern p
-| Ppat_extension(e) -> variant "Extension" @@ json_of_extension e
-| Ppat_open(n, p) ->
-    variant "Open" @@ Array([
-        json_of_loc json_of_long_ident n;
-        json_of_pattern p;
-    ])
-
-and json_of_expression (exp: expression) : json =
-    Object([
-        ("desc", json_of_expression_desc exp.pexp_desc);
-        ("location", json_of_location exp.pexp_loc);
-        ("attributes", json_of_attributes exp.pexp_attributes);
-    ])
-
-and json_of_expression_desc = function
-| Pexp_ident(i) -> variant "Ident" @@ json_of_loc json_of_long_ident i
-| Pexp_constant(c) -> variant "Constant" @@ json_of_constant c
-| Pexp_let(r, vs, e) ->
-    variant "Let" @@ Array([
-        json_of_rec_flag r;
-        json_of_list json_of_value_binding vs;
-        json_of_expression e;
-    ])
-| Pexp_function(cs) -> variant "Function" @@ json_of_list json_of_case cs
-| Pexp_fun(a, eo, p, b) ->
-    variant "Fun" @@ Array([
-        json_of_arg_label a;
-        json_of_option json_of_expression eo;
-        json_of_pattern p;
-        json_of_expression b;
-    ])
-| Pexp_apply(f, a) ->
-    let helper (a, e) = Array([json_of_arg_label a; json_of_expression e]) in
-    variant "Apply" @@ Array([json_of_expression f; json_of_list helper a])
-| Pexp_match(e, cs) ->
-    variant "Match" @@ Array([
-        json_of_expression e;
-        json_of_list json_of_case cs;
-    ])
-| Pexp_try(e, cs) ->
-    variant "Try" @@ Array([
-        json_of_expression e;
-        json_of_list json_of_case cs;
-    ])
-| Pexp_tuple(es) -> variant "Tuple" @@ json_of_list json_of_expression es
-| Pexp_construct(t, eo) ->
-    variant "Construct" @@ Array([
-        json_of_loc json_of_long_ident t;
-        json_of_option json_of_expression eo;
-    ])
-| Pexp_variant(l, eo) ->
-    variant "Variant" @@ Array([
-        json_of_label l;
-        json_of_option json_of_expression eo;
-    ])
-| Pexp_record(vs, eo) ->
-    variant "Record" @@ Array ([
-        json_of_list (json_of_pair (json_of_loc json_of_long_ident) json_of_expression) vs;
-        json_of_option json_of_expression eo;
-    ])
-| Pexp_field(e, n) ->
-    variant "Field" @@ Array([
-        json_of_expression e;
-        json_of_loc json_of_long_ident n;
-    ])
-| Pexp_setfield(e, n, v) ->
-    variant "SetField" @@ Array([
-        json_of_expression e;
-        json_of_loc json_of_long_ident n;
-        json_of_expression v;
-    ])
-| Pexp_array(es) -> variant "Array" @@ json_of_list json_of_expression es
-| Pexp_ifthenelse(c, t, e) ->
-    variant "IfThenElse" @@ Array([
-        json_of_expression c;
-        json_of_expression t;
-        json_of_option json_of_expression e;
-    ])
-| Pexp_sequence(e1, e2) ->
-    variant "Sequence" @@ Array([
-        json_of_expression e1;
-        json_of_expression e2;
-    ])
-| Pexp_while(c, l) ->
-    variant "While" @@ Array([
-        json_of_expression c;
-        json_of_expression l;
-    ])
-| Pexp_for(p, i, n, d, b) ->
-    variant "For" @@ Array([
-        json_of_pattern p;
-        json_of_expression i;
-        json_of_expression n;
-        json_of_direction_flag d;
-        json_of_expression b;
-    ])
-| Pexp_constraint(e, t) ->
-    variant "Constraint" @@ Array([
-        json_of_expression e;
-        json_of_core_type t;
-    ])
-| Pexp_coerce(e, t1, t2) ->
-    variant "Coerce" @@ Array([
-        json_of_expression e;
-        json_of_option json_of_core_type t1;
-        json_of_core_type t2;
-    ])
-| Pexp_send(e, n) ->
-    variant "Send" @@ Array([
-        json_of_expression e;
-        json_of_loc json_of_label n;
-    ])
-| Pexp_new(n) -> variant "New" @@ json_of_loc json_of_long_ident n
-| Pexp_setinstvar(n, e) ->
-    variant "SetInstVar" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_expression e;
-    ])
-| Pexp_override(bs) -> variant "Override" @@ json_of_list
-    (json_of_pair (json_of_loc json_of_label) json_of_expression) bs
-| Pexp_letmodule(n, m, e) ->
-    variant "LetModule" @@ Array([
-        json_of_loc json_of_string n;
-        json_of_module_expr m;
-        json_of_expression e;
-    ])
-| Pexp_letexception(ec, e) ->
-    variant "LetException" @@ Array([
-        json_of_extension_constructor ec;
-        json_of_expression e;
-    ])
-| Pexp_assert(expr) -> variant "Assert" @@ json_of_expression expr
-| Pexp_lazy(e) -> variant "Lazy" @@ json_of_expression e
-| Pexp_poly(e, t) ->
-    variant "Poly" @@ Array([
-        json_of_expression e;
-        json_of_option json_of_core_type t;
-    ])
-| Pexp_object(cs) -> variant "Object" @@ json_of_class_structure cs
-| Pexp_newtype(n, e) ->
-    variant "NewType" @@ Array([
-        json_of_loc json_of_string n;
-        json_of_expression e;
-    ])
-| Pexp_pack(me) -> variant "Pack" @@ json_of_module_expr me
-| Pexp_open(o, n, e) ->
-    variant "Open" @@ Array([
-        json_of_override_flag o;
-        json_of_loc json_of_long_ident n;
-        json_of_expression e;
-    ])
-| Pexp_extension(e) -> variant "Extension" @@ json_of_extension e
-| Pexp_unreachable -> variant "Unreachable" Null
-
-and json_of_case (c: case) : json =
-    Object([
-        ("pat", json_of_pattern c.pc_lhs);
-        ("guard", json_of_option json_of_expression c.pc_guard);
-        ("expr", json_of_expression c.pc_rhs);
-    ])
-
-and json_of_value_description (vd: value_description) : json =
-    Object([
-        ("name", json_of_loc json_of_string vd.pval_name);
-        ("type", json_of_core_type vd.pval_type);
-        ("prim", json_of_list json_of_string vd.pval_prim);
-        ("attributes", json_of_attributes vd.pval_attributes);
-        ("location", json_of_location vd.pval_loc);
-    ])
-
-and json_of_type_declaration (d: type_declaration) : json =
-    Object([
-        ("name", json_of_loc json_of_string d.ptype_name);
-        ("params", json_of_list (json_of_pair json_of_core_type json_of_variance) d.ptype_params);
-        ("cstrs", json_of_list
-           (json_of_triple json_of_core_type json_of_core_type json_of_location)
-           d.ptype_cstrs);
-        ("kind", json_of_type_kind d.ptype_kind);
-        ("private", json_of_private_flag d.ptype_private);
-        ("manifest", json_of_option json_of_core_type d.ptype_manifest);
-        ("attributes", json_of_attributes d.ptype_attributes);
-        ("location", json_of_location d.ptype_loc);
-    ])
-
-and json_of_type_kind = function
-| Ptype_abstract -> variant "Abstract" Null
-| Ptype_variant(cds) -> variant "Variant" @@ json_of_list json_of_constructor_declaration cds
-| Ptype_record(lds) -> variant "Record" @@ json_of_list json_of_label_declaration lds
-| Ptype_open -> variant "Open" Null
-
-and json_of_label_declaration (decl: label_declaration) =
-    Object([
-        ("name", json_of_loc json_of_string decl.pld_name);
-        ("mutable", json_of_mutable_flag decl.pld_mutable);
-        ("type", json_of_core_type decl.pld_type);
-        ("location", json_of_location decl.pld_loc);
-        ("attributes", json_of_attributes decl.pld_attributes);
-    ])
-
-and json_of_constructor_declaration (cd: constructor_declaration) : json =
-    Object([
-        ("name", json_of_loc json_of_string cd.pcd_name);
-        ("args", json_of_constructor_arguments cd.pcd_args);
-        ("res", json_of_option json_of_core_type cd.pcd_res);
-        ("location", json_of_location cd.pcd_loc);
-        ("attributes", json_of_attributes cd.pcd_attributes);
-    ])
-
-and json_of_constructor_arguments = function
-| Pcstr_tuple(tys) -> variant "Tuple" @@ json_of_list json_of_core_type tys
-| Pcstr_record(ls) -> variant "Record" @@ json_of_list json_of_label_declaration ls
-
-and json_of_type_extension (te: type_extension) : json =
-    Object([
-        ("path", json_of_loc json_of_long_ident te.ptyext_path);
-        ("params", json_of_list (json_of_pair json_of_core_type json_of_variance) te.ptyext_params);
-        ("constructors", json_of_list json_of_extension_constructor te.ptyext_constructors);
-        ("private", json_of_private_flag te.ptyext_private);
-        ("attributes", json_of_attributes te.ptyext_attributes);
-    ])
-
-and json_of_extension_constructor (ctor: extension_constructor) =
-    Object([
-        ("name", json_of_loc json_of_string ctor.pext_name);
-        ("kind", json_of_extension_constructor_kind ctor.pext_kind);
-        ("location", json_of_location ctor.pext_loc);
-        ("attributes", json_of_attributes ctor.pext_attributes);
-    ])
-
-and json_of_extension_constructor_kind = function
-| Pext_decl(args, ty) ->
-    variant "Decl" @@ Array([
-        json_of_constructor_arguments args;
-        json_of_option json_of_core_type ty;
-    ])
-| Pext_rebind(id) -> variant "Rebind" @@ json_of_loc json_of_long_ident id
-
-
-(*****************************************************************************)
-(******************************* CLASS LANGUAGE ******************************)
-(*****************************************************************************)
-
-and json_of_class_type (ct: class_type) : json =
-    Object([
-        ("desc", json_of_class_type_desc ct.pcty_desc);
-        ("location", json_of_location ct.pcty_loc);
-        ("attributes", json_of_attributes ct.pcty_attributes);
-    ])
-
-and json_of_class_type_desc : class_type_desc -> json = function
-| Pcty_constr(name, types) ->
-    variant "Constr" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_list json_of_core_type types;
-    ])
-| Pcty_signature(s) -> variant "Signature" @@ json_of_class_signature s
-| Pcty_arrow(n, t1, t2) ->
-    variant "Arrow" @@ Array([
-        json_of_arg_label n;
-        json_of_core_type t1;
-        json_of_class_type t2;
-    ])
-| Pcty_extension(e) -> variant "Extension" @@ json_of_extension e
-| Pcty_open(o, n, t) ->
-    variant "Open" @@ Array([
-        json_of_override_flag o;
-        json_of_loc json_of_long_ident n;
-        json_of_class_type t;
-    ])
-
-and json_of_class_signature (cs: class_signature) : json =
-    Object([
-        ("self", json_of_core_type cs.pcsig_self);
-        ("fields", json_of_list json_of_class_type_field cs.pcsig_fields);
-    ])
-
-and json_of_class_type_field (ctf: class_type_field) : json =
-    Object([
-        ("desc", json_of_class_type_field_desc ctf.pctf_desc);
-        ("location", json_of_location ctf.pctf_loc);
-        ("attributes", json_of_attributes ctf.pctf_attributes);
-    ])
-
-and json_of_class_type_field_desc = function
-| Pctf_inherit(ct) -> variant "Inherit" @@ json_of_class_type ct
-| Pctf_val(n, m, v, t) ->
-    variant "Val" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_mutable_flag m;
-        json_of_virtual_flag v;
-        json_of_core_type t;
-    ])
-| Pctf_method(n, p, v, t) ->
-    variant "Method" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_private_flag p;
-        json_of_virtual_flag v;
-        json_of_core_type t;
-    ])
-| Pctf_constraint(t1, t2) ->
-    variant "Constraint" @@ Array([
-        json_of_core_type t1;
-        json_of_core_type t2;
-    ])
-| Pctf_attribute(a) -> variant "Attribute" @@ json_of_attribute a
-| Pctf_extension(e) -> variant "Extension" @@ json_of_extension e
-
-and json_of_class_infos : 'a. ('a -> json) -> ('a class_infos) -> json =
-    fun f ci -> Object([
-        ("virt", json_of_virtual_flag ci.pci_virt);
-        ("params", json_of_list (json_of_pair json_of_core_type json_of_variance) ci.pci_params);
-        ("name", json_of_loc json_of_string ci.pci_name);
-        ("expr", f ci.pci_expr);
-        ("location", json_of_location ci.pci_loc);
-        ("attributes", json_of_attributes ci.pci_attributes);
-    ])
-
-and json_of_class_description (cd: class_description) : json =
-    json_of_class_infos json_of_class_type cd
-
-and json_of_class_type_declaration (cd: class_type_declaration) : json =
-    json_of_class_infos json_of_class_type cd
-
-and json_of_class_expr (ce: class_expr) : json =
-    Object([
-        ("desc", json_of_class_expr_desc ce.pcl_desc);
-        ("location", json_of_location ce.pcl_loc);
-        ("attributes", json_of_attributes ce.pcl_attributes);
-    ])
-
-and json_of_class_expr_desc : class_expr_desc -> json = function
-| Pcl_constr(name, types) ->
-    variant "Constr" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_list json_of_core_type types;
-    ])
-| Pcl_structure(cl) -> variant "Structure" @@ json_of_class_structure cl
-| Pcl_fun(l, eo, p, e) ->
-    variant "Fun" @@ Array([
-        json_of_arg_label l;
-        json_of_option json_of_expression eo;
-        json_of_pattern p;
-        json_of_class_expr e;
-    ])
-| Pcl_apply(e, a) ->
-    variant "Apply" @@ Array([
-        json_of_class_expr e;
-        json_of_list (json_of_pair json_of_arg_label json_of_expression) a;
-    ])
-| Pcl_let(r, bs, e) ->
-    variant "Let" @@ Array([
-        json_of_rec_flag r;
-        json_of_list json_of_value_binding bs;
-        json_of_class_expr e;
-    ])
-| Pcl_constraint(e, t) ->
-    variant "Constraint" @@ Array([
-        json_of_class_expr e;
-        json_of_class_type t;
-    ])
-| Pcl_extension(ext) -> variant "Extension" @@ json_of_extension ext
-| Pcl_open(o, n, e) ->
-    variant "Open" @@ Array([
-        json_of_override_flag o;
-        json_of_loc json_of_long_ident n;
-        json_of_class_expr e;
-    ])
-
-and json_of_class_structure (cs: class_structure) : json =
-    Object([
-        ("self", json_of_pattern cs.pcstr_self);
-        ("fields", json_of_list json_of_class_field cs.pcstr_fields);
-    ])
-
-and json_of_class_field (cf: class_field) : json =
-    Object([
-        ("desc", json_of_class_field_desc cf.pcf_desc);
-        ("location", json_of_location cf.pcf_loc);
-        ("attributes", json_of_attributes cf.pcf_attributes);
-    ])
-
-and json_of_class_field_desc = function
-| Pcf_inherit(o, e, n) ->
-    variant "Inherit" @@ Array([
-        json_of_override_flag o;
-        json_of_class_expr e;
-        json_of_option (json_of_loc json_of_string) n;
-    ])
-| Pcf_val(n, m, k) ->
-    variant "Val" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_mutable_flag m;
-        json_of_class_field_kind k;
-    ])
-| Pcf_method(n, p, k) ->
-    variant "Val" @@ Array([
-        json_of_loc json_of_label n;
-        json_of_private_flag p;
-        json_of_class_field_kind k;
-    ])
-| Pcf_constraint(t1, t2) ->
-    variant "Constraint" @@ Array([
-        json_of_core_type t1;
-        json_of_core_type t2;
-    ])
-| Pcf_initializer(e) -> variant "Initializer" @@ json_of_expression e
-| Pcf_attribute(a) -> variant "Attribute" @@ json_of_attribute a
-| Pcf_extension(e) -> variant "Extension" @@ json_of_extension e
-
-and json_of_class_field_kind = function
-| Cfk_virtual(t) -> variant "Virtual" @@ json_of_core_type t
-| Cfk_concrete(o, e) ->
-    variant "Concrete" @@ Array([
-        json_of_override_flag o;
-        json_of_expression e;
-    ])
-
-and json_of_class_declaration (cd: class_declaration) : json =
-    json_of_class_infos json_of_class_expr cd
-
-(*****************************************************************************)
-(******************************* MODULE LANGUAGE *****************************)
-(*****************************************************************************)
-
-and json_of_module_type (mt: module_type) : json =
-    Object([
-        ("desc", json_of_module_type_desc mt.pmty_desc);
-        ("location", json_of_location mt.pmty_loc);
-        ("attributes", json_of_attributes mt.pmty_attributes);
-    ])
-
-and json_of_module_type_desc = function
-| Pmty_ident(ident) -> variant "Ident" @@ json_of_loc json_of_long_ident ident
-| Pmty_signature(s) -> variant "Signature" @@ json_of_signature s
-| Pmty_functor(name, arg, body) ->
-    variant "Functor" @@ Array([
-        json_of_loc json_of_string name;
-        json_of_option json_of_module_type arg;
-        json_of_module_type body;
-    ])
-| Pmty_with(mt, wcs) ->
-    variant "With" @@ Array([
-        json_of_module_type mt;
-        json_of_list json_of_with_constraint wcs;
-    ])
-| Pmty_typeof(me) -> variant "TypeOf" @@ json_of_module_expr me
-| Pmty_extension(e) -> variant "Extension" @@ json_of_extension e
-| Pmty_alias(n) -> variant "Alias" @@ json_of_loc json_of_long_ident n
-
-and json_of_signature (s: signature) : json =
-    json_of_list json_of_signature_item s
-
-and json_of_signature_item (si: signature_item) : json =
-    Object([
-        ("desc", json_of_signature_item_desc si.psig_desc);
-        ("location", json_of_location si.psig_loc);
-    ])
-
-and json_of_signature_item_desc = function
-| Psig_value(vd) -> variant "Value" @@ json_of_value_description vd
-| Psig_type(r, tds) ->
-    variant "Type" @@ Array([
-        json_of_rec_flag r;
-        json_of_list json_of_type_declaration tds;
-    ])
-| Psig_typext(te) -> variant "TypeExt" @@ json_of_type_extension te
-| Psig_exception(ec) -> variant "Exception" @@ json_of_extension_constructor ec
-| Psig_module(md) -> variant "Module" @@ json_of_module_declaration md
-| Psig_recmodule(mds) -> variant "RecModule" @@ json_of_list json_of_module_declaration mds
-| Psig_modtype(mt) -> variant "ModType" @@ json_of_module_type_declaration mt
-| Psig_open(o) -> variant "Open" @@ json_of_open_description o
-| Psig_include(id) -> variant "Include" @@ json_of_include_description id
-| Psig_class(cds) -> variant "Class" @@ json_of_list json_of_class_description cds
-| Psig_class_type(ctds) -> variant "ClassType" @@ json_of_list json_of_class_type_declaration ctds
-| Psig_attribute(a) -> variant "Attribute" @@ json_of_attribute a
-| Psig_extension(e, a) ->
-    variant "Extension" @@ Array([
-        json_of_extension e;
-        json_of_attributes a;
-    ])
-
-and json_of_module_declaration (md: module_declaration) : json =
-    Object([
-        ("name", json_of_loc json_of_string md.pmd_name);
-        ("type", json_of_module_type md.pmd_type);
-        ("attributes", json_of_attributes md.pmd_attributes);
-        ("location", json_of_location md.pmd_loc);
-    ])
-
-and json_of_module_type_declaration (mtd: module_type_declaration) : json =
-    Object([
-        ("name", json_of_loc json_of_string mtd.pmtd_name);
-        ("type", json_of_option json_of_module_type mtd.pmtd_type);
-        ("location", json_of_location mtd.pmtd_loc);
-        ("attributes", json_of_attributes mtd.pmtd_attributes);
-    ])
-
-and json_of_open_description (o: open_description) : json =
-    Object([
-        ("id", json_of_loc json_of_long_ident o.popen_lid);
-        ("override", json_of_override_flag o.popen_override);
-        ("location", json_of_location o.popen_loc);
-        ("attributes", json_of_attributes o.popen_attributes);
-    ])
-
-and json_of_include_infos: 'a. ('a -> json) -> ('a include_infos) -> json =
-    fun f ii ->
-    Object([
-        ("mod", f ii.pincl_mod);
-        ("location", json_of_location ii.pincl_loc);
-        ("attributes", json_of_attributes ii.pincl_attributes);
-    ])
-
-and json_of_include_description (id: include_description) : json =
-    json_of_include_infos json_of_module_type id
-
-and json_of_include_declaration (id: include_declaration) : json =
-    json_of_include_infos json_of_module_expr id
-
-and json_of_with_constraint = function
-| Pwith_type(name, td) ->
-    variant "Type" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_type_declaration td;
-    ])
-| Pwith_module(name, m) ->
-    variant "Module" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_loc json_of_long_ident m;
-    ])
-| Pwith_typesubst(name, td) ->
-    variant "TypeSubst" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_type_declaration td;
-    ])
-| Pwith_modsubst(name, m) ->
-    variant "ModuleSubst" @@ Array([
-        json_of_loc json_of_long_ident name;
-        json_of_loc json_of_long_ident m;
-    ])
-
-and json_of_module_expr (me: module_expr) : json =
-    Object([
-        ("desc", json_of_module_expr_desc me.pmod_desc);
-        ("location", json_of_location me.pmod_loc);
-        ("attributes", json_of_attributes me.pmod_attributes);
-    ])
-
-and json_of_module_expr_desc = function
-| Pmod_ident(ident) -> variant "Ident" @@ json_of_loc json_of_long_ident ident;
-| Pmod_structure(s) -> variant "Structure" @@ json_of_structure s
-| Pmod_functor(n, t, e) ->
-    variant "Functor" @@ Array([
-        json_of_loc json_of_string n;
-        json_of_option json_of_module_type t;
-        json_of_module_expr e;
-    ])
-| Pmod_apply(e1, e2) ->
-    variant "Apply" @@ Array([
-        json_of_module_expr e1;
-        json_of_module_expr e2;
-    ])
-| Pmod_constraint(e, t) ->
-    variant "Constraint" @@ Array([
-        json_of_module_expr e;
-        json_of_module_type t;
-    ])
-| Pmod_unpack(e) -> variant "Unpack" @@ json_of_expression e
-| Pmod_extension(e) -> variant "Extension" @@ json_of_extension e
-
-and json_of_structure (s: structure) : json =
-    json_of_list json_of_structure_item s
-
-and json_of_structure_item (si: structure_item) : json =
-    Object([
-        ("location", json_of_location si.pstr_loc);
-        ("desc", json_of_structure_item_desc si.pstr_desc);
-    ])
-
-and json_of_structure_item_desc = function
-| Pstr_eval(e, a) -> variant "Eval" @@ Array([
-                         json_of_expression e;
-                         json_of_attributes a;
-                     ])
-| Pstr_value(r, bs) -> variant "Value" @@ Array([
-                           json_of_rec_flag r;
-                           json_of_list json_of_value_binding bs;
-                       ])
-| Pstr_primitive(vd) -> variant "Primitive" @@ json_of_value_description vd
-| Pstr_type(r, ds) -> variant "Type" @@ Array([
-                           json_of_rec_flag r;
-                           json_of_list json_of_type_declaration ds;
-                      ])
-| Pstr_typext(te) -> variant "TypeExt" @@ json_of_type_extension te
-| Pstr_exception(c) -> variant "Exception" @@ json_of_extension_constructor c
-| Pstr_module(mb) -> variant "Module" @@ json_of_module_binding mb
-| Pstr_recmodule(mbs) -> variant "RecModule" @@ json_of_list json_of_module_binding mbs
-| Pstr_modtype(mtd) -> variant "ModType" @@ json_of_module_type_declaration mtd
-| Pstr_open(o) -> variant "Open" @@ json_of_open_description o
-| Pstr_class(cds) -> variant "Class" @@ json_of_list json_of_class_declaration cds
-| Pstr_class_type(ctds) -> variant "ClassType" @@ json_of_list json_of_class_type_declaration ctds
-| Pstr_include(id) -> variant "Include" @@ json_of_include_declaration id
-| Pstr_attribute(a) -> variant "Attribute" @@ json_of_attribute a
-| Pstr_extension(e, a) ->
-    variant "Extension" @@ Array([
-        json_of_extension e;
-        json_of_attributes a;
-    ])
-
-and json_of_value_binding (vb: value_binding) : json =
-    Object([
-        ("pat", json_of_pattern vb.pvb_pat);
-        ("expr", json_of_expression vb.pvb_expr);
-        ("attributes", json_of_attributes vb.pvb_attributes);
-        ("location", json_of_location vb.pvb_loc);
-    ])
-
-and json_of_module_binding (mb: module_binding) : json =
-    Object([
-        ("name", json_of_loc json_of_string mb.pmb_name);
-        ("expr", json_of_module_expr mb.pmb_expr);
-        ("location", json_of_location mb.pmb_loc);
-        ("attributes", json_of_attributes mb.pmb_attributes)
-    ])
-
-(*****************************************************************************)
-(********************************** TOPLEVEL *********************************)
-(*****************************************************************************)
-
-let json_of_directive_argument = function
-| Pdir_none -> variant "None" @@ Null
-| Pdir_string(s) -> variant "String" @@ String(s)
-| Pdir_int(c, s) ->
-    variant "Int" @@ Array([
-        json_of_string c;
-        json_of_option json_of_char s;
-    ])
-| Pdir_ident(i) -> variant "Ident" @@ json_of_long_ident i
-| Pdir_bool(b) -> variant "Bool" @@ Bool(b)
-
-let json_of_toplevel_phrase = function
-| Ptop_def(s) -> variant "Def" @@ json_of_structure s
-| Ptop_dir(n, a) ->
-    variant "Dir" @@ Array([
-        json_of_string n;
-        json_of_directive_argument a;
-    ])
-
-(*****************************************************************************)
-(******************************* ERROR HANDLING ******************************)
-(*****************************************************************************)
-
-let json_of_lexer_error = function
-| Lexer.Illegal_character(ch) -> variant "IllegalCharacter" @@ json_of_char ch
-| Lexer.Illegal_escape(esc) -> variant "IllegalEscape" @@ json_of_string esc
-| Lexer.Unterminated_comment(loc) -> variant "UnterminatedComment" @@ json_of_location loc
-| Lexer.Unterminated_string -> variant "UnterminatedString" @@ Null
-| Lexer.Unterminated_string_in_comment(l1, l2) ->
-    variant "UnterminatedStringInComment" @@ Array([
-        json_of_location l1;
-        json_of_location l2;
-    ])
-| Lexer.Keyword_as_label(str) -> variant "KeywordAsLabel" @@ json_of_string str
-| Lexer.Invalid_literal(str) -> variant "InvalidLiteral" @@ json_of_string str
-| Lexer.Invalid_directive(dir, expl) ->
-    variant "InvalidDirective" @@ Array([
-        json_of_string dir;
-        json_of_option json_of_string expl;
-    ])
-
-let json_of_syntax_error = function
-| Syntaxerr.Unclosed(la, sa, lb, sb) ->
-    variant "Unclosed" @@ Array([
-        json_of_location la;
-        json_of_string sa;
-        json_of_location lb;
-        json_of_string sb;
-    ])
-| Syntaxerr.Expecting(loc, str) ->
-    variant "Expecting" @@ Array([
-        json_of_location loc;
-        json_of_string str;
-    ])
-| Syntaxerr.Not_expecting(loc, str) ->
-    variant "NotExpecting" @@ Array([
-        json_of_location loc;
-        json_of_string str;
-    ])
-| Syntaxerr.Applicative_path(loc) -> variant "ApplicativePath" @@ json_of_location loc
-| Syntaxerr.Variable_in_scope(loc, str) ->
-    variant "VariableInScope" @@ Array([
-        json_of_location loc;
-        json_of_string str;
-    ])
-| Syntaxerr.Other(loc) -> variant "Other" @@ json_of_location loc
-| Syntaxerr.Ill_formed_ast(loc, str) ->
-    variant "IllFormedAst" @@ Array([
-        json_of_location loc;
-        json_of_string str;
-    ])
-| Syntaxerr.Invalid_package_type(loc, str) ->
-    variant "InvalidPackageType" @@ Array([
-        json_of_location loc;
-        json_of_string str;
-    ])
-
-(*****************************************************************************)
-(******************************* PARSE FUNCTION ******************************)
-(*****************************************************************************)
-
-let json_of_ocaml (src: string) (path: string) : json =
+let parse_ast ~src:src ~path:path : Parsetree.toplevel_phrase list =
     let buf = Lexing.from_string src in
     buf.lex_start_p <- { buf.lex_start_p with pos_fname = path };
     buf.lex_curr_p <- { buf.lex_curr_p with pos_fname = path };
     Parse.use_file buf
-    |> json_of_list json_of_toplevel_phrase
 
-let parse (src: string) (path: string) : string =
-    let json =
-        try
-            Object([
-                ("Ok", json_of_ocaml src path);
+module Make (S : Serialize.S) = struct
+    open Asttypes
+    open Longident
+    open Parsetree
+
+    module S_ext = Serialize.S_ext(S)
+    open S
+    open S_ext
+
+    (*************************************************************************)
+    (******************************* AST TYPES *******************************)
+    (*************************************************************************)
+
+    let rec serialize_rec_flag = function
+    | Nonrecursive -> serialize_bool false
+    | Recursive -> serialize_bool true
+
+    and serialize_direction_flag = function
+    | Upto -> serialize_bool true
+    | Downto -> serialize_bool false
+
+    and serialize_private_flag = function
+    | Private -> serialize_bool true
+    | Public -> serialize_bool false
+
+    and serialize_mutable_flag = function
+    | Immutable -> serialize_bool false
+    | Mutable -> serialize_bool true
+
+    and serialize_virtual_flag = function
+    | Virtual -> serialize_bool true
+    | Concrete -> serialize_bool false
+
+    and serialize_override_flag = function
+    | Override -> serialize_bool true
+    | Fresh -> serialize_bool false
+
+    and serialize_closed_flag = function
+    | Closed -> serialize_bool true
+    | Open -> serialize_bool false
+
+    and serialize_label = serialize_string
+
+    and serialize_arg_label = function
+    | Nolabel -> serialize_variant "NoLabel" serialize_null
+    | Labelled s -> serialize_variant "Labelled" @@ serialize_string s
+    | Optional s -> serialize_variant "Optional" @@ serialize_string s
+
+    and serialize_variance = function
+    | Covariant -> serialize_variant "Covariant" serialize_null
+    | Contravariant -> serialize_variant "Contravariant" serialize_null
+    | Invariant -> serialize_variant "Invariant" serialize_null
+
+    (*************************************************************************)
+    (******************************** LOCATIONS ******************************)
+    (*************************************************************************)
+
+    let rec serialize_position (pos: Lexing.position) : S.t =
+        serialize_struct "Position" ([
+            ("filename", serialize_string pos.pos_fname);
+            ("line", serialize_int pos.pos_lnum);
+            ("column", serialize_int (pos.pos_cnum - pos.pos_bol));
+            ("offset", serialize_int pos.pos_cnum);
+        ])
+
+    and serialize_location (loc: Location.t) : S.t =
+        serialize_struct "Location" ([
+            ("start", serialize_position loc.loc_start);
+            ("end", serialize_position loc.loc_end);
+            ("ghost", serialize_bool loc.loc_ghost);
+        ])
+
+    and serialize_loc (f: 'a -> S.t) (x: 'a loc) : S.t =
+        serialize_struct "Loc" ([
+            ("txt", f x.txt);
+            ("location", serialize_location x.loc);
+        ])
+
+    (*************************************************************************)
+    (******************************* PARSE TREE ******************************)
+    (*************************************************************************)
+
+    let rec serialize_constant = function
+    | Pconst_integer(str, suffix) ->
+            serialize_variant "Integer" @@ serialize_seq ([
+                serialize_string str;
+                build_option serialize_char suffix;
             ])
-        with
-            | Lexer.Error(err, loc) ->
-                Object([
-                    ("Err", variant "Lexer" @@ Array([
-                        json_of_lexer_error err;
-                        json_of_location loc;
-                    ]))
-                ])
-            | Syntaxerr.Error(err) ->
-                Object([
-                    ("Err", variant "Syntax" @@ json_of_syntax_error err)
-                ])
-            | err ->
-                let err = json_of_string (Printexc.to_string err) in
-                Object([ ("Err", variant "Other" @@ err) ])
-    in
-    string_of_json json
+    | Pconst_char(c) -> serialize_variant "Char" @@ serialize_char c
+    | Pconst_string(str, suffix) ->
+            serialize_variant "String" @@ serialize_seq ([
+                serialize_string str;
+                build_option serialize_string suffix;
+            ])
+    | Pconst_float(str, suffix) ->
+            serialize_variant "Float" @@ serialize_seq ([
+                serialize_string str;
+                build_option serialize_char suffix;
+            ])
 
-(* Register the parse function to be callable from C. *)
-let () =
-    Callback.register "parse" parse
+    and serialize_long_ident = function
+    | Lident(s) -> serialize_variant "Ident" @@ serialize_string s
+    | Ldot(i, s) -> serialize_variant "Dot" @@ serialize_seq ([serialize_long_ident i; serialize_string s])
+    | Lapply(l, r) ->
+        serialize_variant "Apply" @@ serialize_seq ([
+            serialize_long_ident l;
+            serialize_long_ident r;
+        ])
+
+    (*****************************************************************************)
+    (****************************** EXTENSION POINTS *****************************)
+    (*****************************************************************************)
+
+    and serialize_attribute (attr: attribute) =
+        build_pair (serialize_loc serialize_string) serialize_payload attr
+
+    and serialize_extension (ext: extension) =
+        build_pair (serialize_loc serialize_string) serialize_payload ext
+
+    and serialize_attributes (attrs: attributes) : S.t =
+        build_list serialize_attribute attrs
+
+    and serialize_payload = function
+    | PStr(s) -> serialize_variant "Structure" @@ serialize_structure s
+    | PSig(s) -> serialize_variant "Signature" @@ serialize_signature s
+    | PTyp(s) -> serialize_variant "Type" @@ serialize_core_type s
+    | PPat(p, e) ->
+        serialize_variant "Pattern" @@ serialize_seq ([
+            serialize_pattern p;
+            build_option serialize_expression e;
+        ])
+
+    (*************************************************************************)
+    (****************************** CORE LANGUAGE ****************************)
+    (*************************************************************************)
+
+    and serialize_core_type (ct: core_type) : S.t =
+        serialize_struct "CoreType" ([
+            ("desc", serialize_core_type_desc ct.ptyp_desc);
+            ("location", serialize_location ct.ptyp_loc);
+            ("attributes", serialize_attributes ct.ptyp_attributes);
+        ])
+
+    and serialize_core_type_desc = function
+    | Ptyp_any -> serialize_variant "Any" serialize_null
+    | Ptyp_var(s) -> serialize_variant "Var" @@ serialize_string s
+    | Ptyp_arrow(a, l, r) ->
+        serialize_variant "Arrow" @@ serialize_seq ([
+            serialize_arg_label a;
+            serialize_core_type l;
+            serialize_core_type r;
+        ])
+    | Ptyp_tuple(ts) -> serialize_variant "Tuple" @@ build_list serialize_core_type ts
+    | Ptyp_constr(a, ts) ->
+        serialize_variant "Constr" @@ serialize_seq ([
+            serialize_loc serialize_long_ident a;
+            build_list serialize_core_type ts;
+        ])
+    | Ptyp_object(fs, c) ->
+        serialize_variant "Object" @@ serialize_seq ([
+            build_list serialize_object_field fs;
+            serialize_closed_flag c;
+        ])
+    | Ptyp_class(l, ts) ->
+        serialize_variant "Class" @@ serialize_seq ([
+            serialize_loc serialize_long_ident l;
+            build_list serialize_core_type ts;
+        ])
+    | Ptyp_alias(t, s) ->
+        serialize_variant "Alias" @@ serialize_seq ([
+            serialize_core_type t;
+            serialize_string s;
+        ])
+    | Ptyp_variant(vs, c, ls) ->
+        serialize_variant "Variant" @@ serialize_seq ([
+            build_list serialize_row_field vs;
+            serialize_closed_flag c;
+            build_option (build_list serialize_label) ls;
+        ])
+    | Ptyp_poly(vs, t) ->
+        serialize_variant "Poly" @@ serialize_seq ([
+            build_list (serialize_loc serialize_string) vs;
+            serialize_core_type t;
+        ])
+    | Ptyp_package(e) -> serialize_variant "Package" @@ serialize_package_type e
+    | Ptyp_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+
+    and serialize_package_type (pt: package_type) : S.t =
+        build_pair
+            (serialize_loc serialize_long_ident)
+            (build_list (build_pair (serialize_loc serialize_long_ident) serialize_core_type))
+            pt
+
+    and serialize_row_field : row_field -> S.t = function
+    | Rtag(lbl, attrs, b, tys) ->
+        serialize_variant "Tag" @@ serialize_seq ([
+            serialize_loc serialize_label lbl;
+            serialize_attributes attrs;
+            serialize_bool b;
+            build_list serialize_core_type tys;
+        ])
+    | Rinherit(t) -> serialize_variant "Inherit" @@ serialize_core_type t
+
+    and serialize_object_field = function
+    | Otag(n, a, t) ->
+        serialize_variant "Tag" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_attributes a;
+            serialize_core_type t;
+        ])
+    | Oinherit(t) -> serialize_variant "Inherit" @@ serialize_core_type t
+
+    and serialize_pattern (pat: pattern) : S.t =
+        serialize_struct "Pattern" ([
+            ("desc", serialize_pattern_desc pat.ppat_desc);
+            ("location", serialize_location pat.ppat_loc);
+            ("attributes", serialize_attributes pat.ppat_attributes);
+        ])
+
+    and serialize_pattern_desc = function
+    | Ppat_any -> serialize_variant "Any" serialize_null
+    | Ppat_var(n) -> serialize_variant "Var" @@ serialize_loc serialize_string n
+    | Ppat_alias(p, n) ->
+        serialize_variant "Alias" @@ serialize_seq ([
+            serialize_pattern p;
+            serialize_loc serialize_string n;
+        ])
+    | Ppat_constant(c) -> serialize_variant "Constant" @@ serialize_constant c
+    | Ppat_interval(f, t) ->
+        serialize_variant "Interval" @@ serialize_seq ([
+            serialize_constant f;
+            serialize_constant t;
+        ])
+    | Ppat_tuple(ps) -> serialize_variant "Tuple" @@ build_list serialize_pattern ps
+    | Ppat_construct(n, p) ->
+        serialize_variant "Construct" @@ serialize_seq ([
+            serialize_loc serialize_long_ident n;
+            build_option serialize_pattern p;
+        ])
+    | Ppat_variant(n, p) ->
+        serialize_variant "Variant" @@ serialize_seq ([
+            serialize_string n;
+            build_option serialize_pattern p;
+        ])
+    | Ppat_record(ms, closed) ->
+        serialize_variant "Record" @@ serialize_seq ([
+            build_list (build_pair (serialize_loc serialize_long_ident) serialize_pattern) ms;
+            serialize_closed_flag closed;
+        ])
+    | Ppat_array(ps) -> serialize_variant "serialize_seq " @@ build_list serialize_pattern ps
+    | Ppat_or(l, r) ->
+        serialize_variant "Or" @@ serialize_seq ([
+            serialize_pattern l;
+            serialize_pattern r;
+        ])
+    | Ppat_constraint(p, t) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_pattern p;
+            serialize_core_type t;
+        ])
+    | Ppat_type(t) -> serialize_variant "Type" @@ serialize_loc serialize_long_ident t
+    | Ppat_lazy(p) -> serialize_variant "Lazy" @@ serialize_pattern p
+    | Ppat_unpack(s) -> serialize_variant "Unpack" @@ serialize_loc serialize_string s
+    | Ppat_exception(p) -> serialize_variant "Exception" @@ serialize_pattern p
+    | Ppat_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+    | Ppat_open(n, p) ->
+        serialize_variant "Open" @@ serialize_seq ([
+            serialize_loc serialize_long_ident n;
+            serialize_pattern p;
+        ])
+
+    and serialize_expression (exp: expression) : S.t =
+        serialize_struct "Expression" ([
+            ("desc", serialize_expression_desc exp.pexp_desc);
+            ("location", serialize_location exp.pexp_loc);
+            ("attributes", serialize_attributes exp.pexp_attributes);
+        ])
+
+    and serialize_expression_desc = function
+    | Pexp_ident(i) -> serialize_variant "Ident" @@ serialize_loc serialize_long_ident i
+    | Pexp_constant(c) -> serialize_variant "Constant" @@ serialize_constant c
+    | Pexp_let(r, vs, e) ->
+        serialize_variant "Let" @@ serialize_seq ([
+            serialize_rec_flag r;
+            build_list serialize_value_binding vs;
+            serialize_expression e;
+        ])
+    | Pexp_function(cs) -> serialize_variant "Function" @@ build_list serialize_case cs
+    | Pexp_fun(a, eo, p, b) ->
+        serialize_variant "Fun" @@ serialize_seq ([
+            serialize_arg_label a;
+            build_option serialize_expression eo;
+            serialize_pattern p;
+            serialize_expression b;
+        ])
+    | Pexp_apply(f, a) ->
+        let helper (a, e) = serialize_seq ([serialize_arg_label a; serialize_expression e]) in
+        serialize_variant "Apply" @@ serialize_seq ([serialize_expression f; build_list helper a])
+    | Pexp_match(e, cs) ->
+        serialize_variant "Match" @@ serialize_seq ([
+            serialize_expression e;
+            build_list serialize_case cs;
+        ])
+    | Pexp_try(e, cs) ->
+        serialize_variant "Try" @@ serialize_seq ([
+            serialize_expression e;
+            build_list serialize_case cs;
+        ])
+    | Pexp_tuple(es) -> serialize_variant "Tuple" @@ build_list serialize_expression es
+    | Pexp_construct(t, eo) ->
+        serialize_variant "Construct" @@ serialize_seq ([
+            serialize_loc serialize_long_ident t;
+            build_option serialize_expression eo;
+        ])
+    | Pexp_variant(l, eo) ->
+        serialize_variant "Variant" @@ serialize_seq ([
+            serialize_label l;
+            build_option serialize_expression eo;
+        ])
+    | Pexp_record(vs, eo) ->
+        serialize_variant "Record" @@ serialize_seq  ([
+            build_list (build_pair (serialize_loc serialize_long_ident) serialize_expression) vs;
+            build_option serialize_expression eo;
+        ])
+    | Pexp_field(e, n) ->
+        serialize_variant "Field" @@ serialize_seq ([
+            serialize_expression e;
+            serialize_loc serialize_long_ident n;
+        ])
+    | Pexp_setfield(e, n, v) ->
+        serialize_variant "SetField" @@ serialize_seq ([
+            serialize_expression e;
+            serialize_loc serialize_long_ident n;
+            serialize_expression v;
+        ])
+    | Pexp_array(es) -> serialize_variant "serialize_seq " @@ build_list serialize_expression es
+    | Pexp_ifthenelse(c, t, e) ->
+        serialize_variant "IfThenElse" @@ serialize_seq ([
+            serialize_expression c;
+            serialize_expression t;
+            build_option serialize_expression e;
+        ])
+    | Pexp_sequence(e1, e2) ->
+        serialize_variant "Sequence" @@ serialize_seq ([
+            serialize_expression e1;
+            serialize_expression e2;
+        ])
+    | Pexp_while(c, l) ->
+        serialize_variant "While" @@ serialize_seq ([
+            serialize_expression c;
+            serialize_expression l;
+        ])
+    | Pexp_for(p, i, n, d, b) ->
+        serialize_variant "For" @@ serialize_seq ([
+            serialize_pattern p;
+            serialize_expression i;
+            serialize_expression n;
+            serialize_direction_flag d;
+            serialize_expression b;
+        ])
+    | Pexp_constraint(e, t) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_expression e;
+            serialize_core_type t;
+        ])
+    | Pexp_coerce(e, t1, t2) ->
+        serialize_variant "Coerce" @@ serialize_seq ([
+            serialize_expression e;
+            build_option serialize_core_type t1;
+            serialize_core_type t2;
+        ])
+    | Pexp_send(e, n) ->
+        serialize_variant "Send" @@ serialize_seq ([
+            serialize_expression e;
+            serialize_loc serialize_label n;
+        ])
+    | Pexp_new(n) -> serialize_variant "New" @@ serialize_loc serialize_long_ident n
+    | Pexp_setinstvar(n, e) ->
+        serialize_variant "SetInstVar" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_expression e;
+        ])
+    | Pexp_override(bs) -> serialize_variant "Override" @@ build_list
+        (build_pair (serialize_loc serialize_label) serialize_expression) bs
+    | Pexp_letmodule(n, m, e) ->
+        serialize_variant "LetModule" @@ serialize_seq ([
+            serialize_loc serialize_string n;
+            serialize_module_expr m;
+            serialize_expression e;
+        ])
+    | Pexp_letexception(ec, e) ->
+        serialize_variant "LetException" @@ serialize_seq ([
+            serialize_extension_constructor ec;
+            serialize_expression e;
+        ])
+    | Pexp_assert(expr) -> serialize_variant "Assert" @@ serialize_expression expr
+    | Pexp_lazy(e) -> serialize_variant "Lazy" @@ serialize_expression e
+    | Pexp_poly(e, t) ->
+        serialize_variant "Poly" @@ serialize_seq ([
+            serialize_expression e;
+            build_option serialize_core_type t;
+        ])
+    | Pexp_object(cs) -> serialize_variant "Object" @@ serialize_class_structure cs
+    | Pexp_newtype(n, e) ->
+        serialize_variant "NewType" @@ serialize_seq ([
+            serialize_loc serialize_string n;
+            serialize_expression e;
+        ])
+    | Pexp_pack(me) -> serialize_variant "Pack" @@ serialize_module_expr me
+    | Pexp_open(o, n, e) ->
+        serialize_variant "Open" @@ serialize_seq ([
+            serialize_override_flag o;
+            serialize_loc serialize_long_ident n;
+            serialize_expression e;
+        ])
+    | Pexp_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+    | Pexp_unreachable -> serialize_variant "Unreachable" serialize_null
+
+    and serialize_case (c: case) : S.t =
+        serialize_struct "Case" ([
+            ("pat", serialize_pattern c.pc_lhs);
+            ("guard", build_option serialize_expression c.pc_guard);
+            ("expr", serialize_expression c.pc_rhs);
+        ])
+
+    and serialize_value_description (vd: value_description) : S.t =
+        serialize_struct "ValueDescription" ([
+            ("name", serialize_loc serialize_string vd.pval_name);
+            ("type", serialize_core_type vd.pval_type);
+            ("prim", build_list serialize_string vd.pval_prim);
+            ("attributes", serialize_attributes vd.pval_attributes);
+            ("location", serialize_location vd.pval_loc);
+        ])
+
+    and serialize_type_declaration (d: type_declaration) : S.t =
+        serialize_struct "TypeDeclaration" ([
+            ("name", serialize_loc serialize_string d.ptype_name);
+            ("params", build_list (build_pair serialize_core_type serialize_variance) d.ptype_params);
+            ("cstrs", build_list
+               (build_triple serialize_core_type serialize_core_type serialize_location)
+               d.ptype_cstrs);
+            ("kind", serialize_type_kind d.ptype_kind);
+            ("private", serialize_private_flag d.ptype_private);
+            ("manifest", build_option serialize_core_type d.ptype_manifest);
+            ("attributes", serialize_attributes d.ptype_attributes);
+            ("location", serialize_location d.ptype_loc);
+        ])
+
+    and serialize_type_kind = function
+    | Ptype_abstract -> serialize_variant "Abstract" serialize_null
+    | Ptype_variant(cds) -> serialize_variant "Variant" @@ build_list serialize_constructor_declaration cds
+    | Ptype_record(lds) -> serialize_variant "Record" @@ build_list serialize_label_declaration lds
+    | Ptype_open -> serialize_variant "Open" serialize_null
+
+    and serialize_label_declaration (decl: label_declaration) =
+        serialize_struct "LabelDeclaration" ([
+            ("name", serialize_loc serialize_string decl.pld_name);
+            ("mutable", serialize_mutable_flag decl.pld_mutable);
+            ("type", serialize_core_type decl.pld_type);
+            ("location", serialize_location decl.pld_loc);
+            ("attributes", serialize_attributes decl.pld_attributes);
+        ])
+
+    and serialize_constructor_declaration (cd: constructor_declaration) : S.t =
+        serialize_struct "ConstructorDeclaration" ([
+            ("name", serialize_loc serialize_string cd.pcd_name);
+            ("args", serialize_constructor_arguments cd.pcd_args);
+            ("res", build_option serialize_core_type cd.pcd_res);
+            ("location", serialize_location cd.pcd_loc);
+            ("attributes", serialize_attributes cd.pcd_attributes);
+        ])
+
+    and serialize_constructor_arguments = function
+    | Pcstr_tuple(tys) -> serialize_variant "Tuple" @@ build_list serialize_core_type tys
+    | Pcstr_record(ls) -> serialize_variant "Record" @@ build_list serialize_label_declaration ls
+
+    and serialize_type_extension (te: type_extension) : S.t =
+        serialize_struct "TypeExtension" ([
+            ("path", serialize_loc serialize_long_ident te.ptyext_path);
+            ("params", build_list (build_pair serialize_core_type serialize_variance) te.ptyext_params);
+            ("constructors", build_list serialize_extension_constructor te.ptyext_constructors);
+            ("private", serialize_private_flag te.ptyext_private);
+            ("attributes", serialize_attributes te.ptyext_attributes);
+        ])
+
+    and serialize_extension_constructor (ctor: extension_constructor) =
+        serialize_struct "ExtensionConstructor" ([
+            ("name", serialize_loc serialize_string ctor.pext_name);
+            ("kind", serialize_extension_constructor_kind ctor.pext_kind);
+            ("location", serialize_location ctor.pext_loc);
+            ("attributes", serialize_attributes ctor.pext_attributes);
+        ])
+
+    and serialize_extension_constructor_kind = function
+    | Pext_decl(args, ty) ->
+        serialize_variant "Decl" @@ serialize_seq ([
+            serialize_constructor_arguments args;
+            build_option serialize_core_type ty;
+        ])
+    | Pext_rebind(id) -> serialize_variant "Rebind" @@ serialize_loc serialize_long_ident id
+
+
+    (*************************************************************************)
+    (***************************** CLASS LANGUAGE ****************************)
+    (*************************************************************************)
+
+    and serialize_class_type (ct: class_type) : S.t =
+        serialize_struct "ClassType" ([
+            ("desc", serialize_class_type_desc ct.pcty_desc);
+            ("location", serialize_location ct.pcty_loc);
+            ("attributes", serialize_attributes ct.pcty_attributes);
+        ])
+
+    and serialize_class_type_desc : class_type_desc -> S.t = function
+    | Pcty_constr(name, types) ->
+        serialize_variant "Constr" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            build_list serialize_core_type types;
+        ])
+    | Pcty_signature(s) -> serialize_variant "Signature" @@ serialize_class_signature s
+    | Pcty_arrow(n, t1, t2) ->
+        serialize_variant "Arrow" @@ serialize_seq ([
+            serialize_arg_label n;
+            serialize_core_type t1;
+            serialize_class_type t2;
+        ])
+    | Pcty_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+    | Pcty_open(o, n, t) ->
+        serialize_variant "Open" @@ serialize_seq ([
+            serialize_override_flag o;
+            serialize_loc serialize_long_ident n;
+            serialize_class_type t;
+        ])
+
+    and serialize_class_signature (cs: class_signature) : S.t =
+        serialize_struct "ClassSignature" ([
+            ("self", serialize_core_type cs.pcsig_self);
+            ("fields", build_list serialize_class_type_field cs.pcsig_fields);
+        ])
+
+    and serialize_class_type_field (ctf: class_type_field) : S.t =
+        serialize_struct "ClassTypeField" ([
+            ("desc", serialize_class_type_field_desc ctf.pctf_desc);
+            ("location", serialize_location ctf.pctf_loc);
+            ("attributes", serialize_attributes ctf.pctf_attributes);
+        ])
+
+    and serialize_class_type_field_desc = function
+    | Pctf_inherit(ct) -> serialize_variant "Inherit" @@ serialize_class_type ct
+    | Pctf_val(n, m, v, t) ->
+        serialize_variant "Val" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_mutable_flag m;
+            serialize_virtual_flag v;
+            serialize_core_type t;
+        ])
+    | Pctf_method(n, p, v, t) ->
+        serialize_variant "Method" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_private_flag p;
+            serialize_virtual_flag v;
+            serialize_core_type t;
+        ])
+    | Pctf_constraint(t1, t2) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_core_type t1;
+            serialize_core_type t2;
+        ])
+    | Pctf_attribute(a) -> serialize_variant "Attribute" @@ serialize_attribute a
+    | Pctf_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+
+    and serialize_class_infos : 'a. ('a -> S.t) -> ('a class_infos) -> S.t =
+        fun f ci -> serialize_struct "ClassInfos" ([
+            ("virt", serialize_virtual_flag ci.pci_virt);
+            ("params", build_list (build_pair serialize_core_type serialize_variance) ci.pci_params);
+            ("name", serialize_loc serialize_string ci.pci_name);
+            ("expr", f ci.pci_expr);
+            ("location", serialize_location ci.pci_loc);
+            ("attributes", serialize_attributes ci.pci_attributes);
+        ])
+
+    and serialize_class_description (cd: class_description) : S.t =
+        serialize_class_infos serialize_class_type cd
+
+    and serialize_class_type_declaration (cd: class_type_declaration) : S.t =
+        serialize_class_infos serialize_class_type cd
+
+    and serialize_class_expr (ce: class_expr) : S.t =
+        serialize_struct "ClassExpr" ([
+            ("desc", serialize_class_expr_desc ce.pcl_desc);
+            ("location", serialize_location ce.pcl_loc);
+            ("attributes", serialize_attributes ce.pcl_attributes);
+        ])
+
+    and serialize_class_expr_desc : class_expr_desc -> S.t = function
+    | Pcl_constr(name, types) ->
+        serialize_variant "Constr" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            build_list serialize_core_type types;
+        ])
+    | Pcl_structure(cl) -> serialize_variant "Structure" @@ serialize_class_structure cl
+    | Pcl_fun(l, eo, p, e) ->
+        serialize_variant "Fun" @@ serialize_seq ([
+            serialize_arg_label l;
+            build_option serialize_expression eo;
+            serialize_pattern p;
+            serialize_class_expr e;
+        ])
+    | Pcl_apply(e, a) ->
+        serialize_variant "Apply" @@ serialize_seq ([
+            serialize_class_expr e;
+            build_list (build_pair serialize_arg_label serialize_expression) a;
+        ])
+    | Pcl_let(r, bs, e) ->
+        serialize_variant "Let" @@ serialize_seq ([
+            serialize_rec_flag r;
+            build_list serialize_value_binding bs;
+            serialize_class_expr e;
+        ])
+    | Pcl_constraint(e, t) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_class_expr e;
+            serialize_class_type t;
+        ])
+    | Pcl_extension(ext) -> serialize_variant "Extension" @@ serialize_extension ext
+    | Pcl_open(o, n, e) ->
+        serialize_variant "Open" @@ serialize_seq ([
+            serialize_override_flag o;
+            serialize_loc serialize_long_ident n;
+            serialize_class_expr e;
+        ])
+
+    and serialize_class_structure (cs: class_structure) : S.t =
+        serialize_struct "ClassStructure" ([
+            ("self", serialize_pattern cs.pcstr_self);
+            ("fields", build_list serialize_class_field cs.pcstr_fields);
+        ])
+
+    and serialize_class_field (cf: class_field) : S.t =
+        serialize_struct "ClassField" ([
+            ("desc", serialize_class_field_desc cf.pcf_desc);
+            ("location", serialize_location cf.pcf_loc);
+            ("attributes", serialize_attributes cf.pcf_attributes);
+        ])
+
+    and serialize_class_field_desc = function
+    | Pcf_inherit(o, e, n) ->
+        serialize_variant "Inherit" @@ serialize_seq ([
+            serialize_override_flag o;
+            serialize_class_expr e;
+            build_option (serialize_loc serialize_string) n;
+        ])
+    | Pcf_val(n, m, k) ->
+        serialize_variant "Val" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_mutable_flag m;
+            serialize_class_field_kind k;
+        ])
+    | Pcf_method(n, p, k) ->
+        serialize_variant "Val" @@ serialize_seq ([
+            serialize_loc serialize_label n;
+            serialize_private_flag p;
+            serialize_class_field_kind k;
+        ])
+    | Pcf_constraint(t1, t2) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_core_type t1;
+            serialize_core_type t2;
+        ])
+    | Pcf_initializer(e) -> serialize_variant "Initializer" @@ serialize_expression e
+    | Pcf_attribute(a) -> serialize_variant "Attribute" @@ serialize_attribute a
+    | Pcf_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+
+    and serialize_class_field_kind = function
+    | Cfk_virtual(t) -> serialize_variant "Virtual" @@ serialize_core_type t
+    | Cfk_concrete(o, e) ->
+        serialize_variant "Concrete" @@ serialize_seq ([
+            serialize_override_flag o;
+            serialize_expression e;
+        ])
+
+    and serialize_class_declaration (cd: class_declaration) : S.t =
+        serialize_class_infos serialize_class_expr cd
+
+    (*************************************************************************)
+    (***************************** MODULE LANGUAGE ***************************)
+    (*************************************************************************)
+
+    and serialize_module_type (mt: module_type) : S.t =
+        serialize_struct "ModuleType" ([
+            ("desc", serialize_module_type_desc mt.pmty_desc);
+            ("location", serialize_location mt.pmty_loc);
+            ("attributes", serialize_attributes mt.pmty_attributes);
+        ])
+
+    and serialize_module_type_desc = function
+    | Pmty_ident(ident) -> serialize_variant "Ident" @@ serialize_loc serialize_long_ident ident
+    | Pmty_signature(s) -> serialize_variant "Signature" @@ serialize_signature s
+    | Pmty_functor(name, arg, body) ->
+        serialize_variant "Functor" @@ serialize_seq ([
+            serialize_loc serialize_string name;
+            build_option serialize_module_type arg;
+            serialize_module_type body;
+        ])
+    | Pmty_with(mt, wcs) ->
+        serialize_variant "With" @@ serialize_seq ([
+            serialize_module_type mt;
+            build_list serialize_with_constraint wcs;
+        ])
+    | Pmty_typeof(me) -> serialize_variant "TypeOf" @@ serialize_module_expr me
+    | Pmty_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+    | Pmty_alias(n) -> serialize_variant "Alias" @@ serialize_loc serialize_long_ident n
+
+    and serialize_signature (s: signature) : S.t =
+        build_list serialize_signature_item s
+
+    and serialize_signature_item (si: signature_item) : S.t =
+        serialize_struct "SignatureItem" ([
+            ("desc", serialize_signature_item_desc si.psig_desc);
+            ("location", serialize_location si.psig_loc);
+        ])
+
+    and serialize_signature_item_desc = function
+    | Psig_value(vd) -> serialize_variant "Value" @@ serialize_value_description vd
+    | Psig_type(r, tds) ->
+        serialize_variant "Type" @@ serialize_seq ([
+            serialize_rec_flag r;
+            build_list serialize_type_declaration tds;
+        ])
+    | Psig_typext(te) -> serialize_variant "TypeExt" @@ serialize_type_extension te
+    | Psig_exception(ec) -> serialize_variant "Exception" @@ serialize_extension_constructor ec
+    | Psig_module(md) -> serialize_variant "Module" @@ serialize_module_declaration md
+    | Psig_recmodule(mds) -> serialize_variant "RecModule" @@ build_list serialize_module_declaration mds
+    | Psig_modtype(mt) -> serialize_variant "ModType" @@ serialize_module_type_declaration mt
+    | Psig_open(o) -> serialize_variant "Open" @@ serialize_open_description o
+    | Psig_include(id) -> serialize_variant "Include" @@ serialize_include_description id
+    | Psig_class(cds) -> serialize_variant "Class" @@ build_list serialize_class_description cds
+    | Psig_class_type(ctds) -> serialize_variant "ClassType" @@ build_list serialize_class_type_declaration ctds
+    | Psig_attribute(a) -> serialize_variant "Attribute" @@ serialize_attribute a
+    | Psig_extension(e, a) ->
+        serialize_variant "Extension" @@ serialize_seq ([
+            serialize_extension e;
+            serialize_attributes a;
+        ])
+
+    and serialize_module_declaration (md: module_declaration) : S.t =
+        serialize_struct "ModuleDeclaration" ([
+            ("name", serialize_loc serialize_string md.pmd_name);
+            ("type", serialize_module_type md.pmd_type);
+            ("attributes", serialize_attributes md.pmd_attributes);
+            ("location", serialize_location md.pmd_loc);
+        ])
+
+    and serialize_module_type_declaration (mtd: module_type_declaration) : S.t =
+        serialize_struct "ModuleTypeDeclaration" ([
+            ("name", serialize_loc serialize_string mtd.pmtd_name);
+            ("type", build_option serialize_module_type mtd.pmtd_type);
+            ("location", serialize_location mtd.pmtd_loc);
+            ("attributes", serialize_attributes mtd.pmtd_attributes);
+        ])
+
+    and serialize_open_description (o: open_description) : S.t =
+        serialize_struct "OpenDescription" ([
+            ("id", serialize_loc serialize_long_ident o.popen_lid);
+            ("override", serialize_override_flag o.popen_override);
+            ("location", serialize_location o.popen_loc);
+            ("attributes", serialize_attributes o.popen_attributes);
+        ])
+
+    and serialize_include_infos: 'a. ('a -> S.t) -> ('a include_infos) -> S.t =
+        fun f ii ->
+        serialize_struct "IncludeInfos" ([
+            ("mod", f ii.pincl_mod);
+            ("location", serialize_location ii.pincl_loc);
+            ("attributes", serialize_attributes ii.pincl_attributes);
+        ])
+
+    and serialize_include_description (id: include_description) : S.t =
+        serialize_include_infos serialize_module_type id
+
+    and serialize_include_declaration (id: include_declaration) : S.t =
+        serialize_include_infos serialize_module_expr id
+
+    and serialize_with_constraint = function
+    | Pwith_type(name, td) ->
+        serialize_variant "Type" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            serialize_type_declaration td;
+        ])
+    | Pwith_module(name, m) ->
+        serialize_variant "Module" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            serialize_loc serialize_long_ident m;
+        ])
+    | Pwith_typesubst(name, td) ->
+        serialize_variant "TypeSubst" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            serialize_type_declaration td;
+        ])
+    | Pwith_modsubst(name, m) ->
+        serialize_variant "ModuleSubst" @@ serialize_seq ([
+            serialize_loc serialize_long_ident name;
+            serialize_loc serialize_long_ident m;
+        ])
+
+    and serialize_module_expr (me: module_expr) : S.t =
+        serialize_struct "ModuleExpr" ([
+            ("desc", serialize_module_expr_desc me.pmod_desc);
+            ("location", serialize_location me.pmod_loc);
+            ("attributes", serialize_attributes me.pmod_attributes);
+        ])
+
+    and serialize_module_expr_desc = function
+    | Pmod_ident(ident) -> serialize_variant "Ident" @@ serialize_loc serialize_long_ident ident;
+    | Pmod_structure(s) -> serialize_variant "Structure" @@ serialize_structure s
+    | Pmod_functor(n, t, e) ->
+        serialize_variant "Functor" @@ serialize_seq ([
+            serialize_loc serialize_string n;
+            build_option serialize_module_type t;
+            serialize_module_expr e;
+        ])
+    | Pmod_apply(e1, e2) ->
+        serialize_variant "Apply" @@ serialize_seq ([
+            serialize_module_expr e1;
+            serialize_module_expr e2;
+        ])
+    | Pmod_constraint(e, t) ->
+        serialize_variant "Constraint" @@ serialize_seq ([
+            serialize_module_expr e;
+            serialize_module_type t;
+        ])
+    | Pmod_unpack(e) -> serialize_variant "Unpack" @@ serialize_expression e
+    | Pmod_extension(e) -> serialize_variant "Extension" @@ serialize_extension e
+
+    and serialize_structure (s: structure) : S.t =
+        build_list serialize_structure_item s
+
+    and serialize_structure_item (si: structure_item) : S.t =
+        serialize_struct "StructureItem" ([
+            ("location", serialize_location si.pstr_loc);
+            ("desc", serialize_structure_item_desc si.pstr_desc);
+        ])
+
+    and serialize_structure_item_desc = function
+    | Pstr_eval(e, a) -> serialize_variant "Eval" @@ serialize_seq ([
+                             serialize_expression e;
+                             serialize_attributes a;
+                         ])
+    | Pstr_value(r, bs) -> serialize_variant "Value" @@ serialize_seq ([
+                               serialize_rec_flag r;
+                               build_list serialize_value_binding bs;
+                           ])
+    | Pstr_primitive(vd) -> serialize_variant "Primitive" @@ serialize_value_description vd
+    | Pstr_type(r, ds) -> serialize_variant "Type" @@ serialize_seq ([
+                               serialize_rec_flag r;
+                               build_list serialize_type_declaration ds;
+                          ])
+    | Pstr_typext(te) -> serialize_variant "TypeExt" @@ serialize_type_extension te
+    | Pstr_exception(c) -> serialize_variant "Exception" @@ serialize_extension_constructor c
+    | Pstr_module(mb) -> serialize_variant "Module" @@ serialize_module_binding mb
+    | Pstr_recmodule(mbs) -> serialize_variant "RecModule" @@ build_list serialize_module_binding mbs
+    | Pstr_modtype(mtd) -> serialize_variant "ModType" @@ serialize_module_type_declaration mtd
+    | Pstr_open(o) -> serialize_variant "Open" @@ serialize_open_description o
+    | Pstr_class(cds) -> serialize_variant "Class" @@ build_list serialize_class_declaration cds
+    | Pstr_class_type(ctds) -> serialize_variant "ClassType" @@ build_list serialize_class_type_declaration ctds
+    | Pstr_include(id) -> serialize_variant "Include" @@ serialize_include_declaration id
+    | Pstr_attribute(a) -> serialize_variant "Attribute" @@ serialize_attribute a
+    | Pstr_extension(e, a) ->
+        serialize_variant "Extension" @@ serialize_seq ([
+            serialize_extension e;
+            serialize_attributes a;
+        ])
+
+    and serialize_value_binding (vb: value_binding) : S.t =
+        serialize_struct "ValueBinding" ([
+            ("pat", serialize_pattern vb.pvb_pat);
+            ("expr", serialize_expression vb.pvb_expr);
+            ("attributes", serialize_attributes vb.pvb_attributes);
+            ("location", serialize_location vb.pvb_loc);
+        ])
+
+    and serialize_module_binding (mb: module_binding) : S.t =
+        serialize_struct "ModuleBinding" ([
+            ("name", serialize_loc serialize_string mb.pmb_name);
+            ("expr", serialize_module_expr mb.pmb_expr);
+            ("location", serialize_location mb.pmb_loc);
+            ("attributes", serialize_attributes mb.pmb_attributes)
+        ])
+
+    (*************************************************************************)
+    (******************************** TOPLEVEL *******************************)
+    (*************************************************************************)
+
+    let serialize_directive_argument = function
+    | Pdir_none -> serialize_variant "None" @@ serialize_null
+    | Pdir_string(s) -> serialize_variant "String" @@ serialize_string s
+    | Pdir_int(c, s) ->
+        serialize_variant "Int" @@ serialize_seq ([
+            serialize_string c;
+            build_option serialize_char s;
+        ])
+    | Pdir_ident(i) -> serialize_variant "Ident" @@ serialize_long_ident i
+    | Pdir_bool(b) -> serialize_variant "Bool" @@ serialize_bool b
+
+    let serialize_toplevel_phrase = function
+    | Ptop_def(s) -> serialize_variant "Def" @@ serialize_structure s
+    | Ptop_dir(n, a) ->
+        serialize_variant "Dir" @@ serialize_seq ([
+            serialize_string n;
+            serialize_directive_argument a;
+        ])
+
+    (*************************************************************************)
+    (***************************** ERROR HANDLING ****************************)
+    (*************************************************************************)
+
+    let serialize_lexer_error = function
+    | Lexer.Illegal_character(ch) -> serialize_variant "IllegalCharacter" @@ serialize_char ch
+    | Lexer.Illegal_escape(esc) -> serialize_variant "IllegalEscape" @@ serialize_string esc
+    | Lexer.Unterminated_comment(loc) -> serialize_variant "UnterminatedComment" @@ serialize_location loc
+    | Lexer.Unterminated_string -> serialize_variant "UnterminatedString" @@ serialize_null
+    | Lexer.Unterminated_string_in_comment(l1, l2) ->
+        serialize_variant "UnterminatedStringInComment" @@ serialize_seq ([
+            serialize_location l1;
+            serialize_location l2;
+        ])
+    | Lexer.Keyword_as_label(str) -> serialize_variant "KeywordAsLabel" @@ serialize_string str
+    | Lexer.Invalid_literal(str) -> serialize_variant "InvalidLiteral" @@ serialize_string str
+    | Lexer.Invalid_directive(dir, expl) ->
+        serialize_variant "InvalidDirective" @@ serialize_seq ([
+            serialize_string dir;
+            build_option serialize_string expl;
+        ])
+
+    let serialize_syntax_error = function
+    | Syntaxerr.Unclosed(la, sa, lb, sb) ->
+        serialize_variant "Unclosed" @@ serialize_seq ([
+            serialize_location la;
+            serialize_string sa;
+            serialize_location lb;
+            serialize_string sb;
+        ])
+    | Syntaxerr.Expecting(loc, str) ->
+        serialize_variant "Expecting" @@ serialize_seq ([
+            serialize_location loc;
+            serialize_string str;
+        ])
+    | Syntaxerr.Not_expecting(loc, str) ->
+        serialize_variant "NotExpecting" @@ serialize_seq ([
+            serialize_location loc;
+            serialize_string str;
+        ])
+    | Syntaxerr.Applicative_path(loc) -> serialize_variant "ApplicativePath" @@ serialize_location loc
+    | Syntaxerr.Variable_in_scope(loc, str) ->
+        serialize_variant "VariableInScope" @@ serialize_seq ([
+            serialize_location loc;
+            serialize_string str;
+        ])
+    | Syntaxerr.Other(loc) -> serialize_variant "Other" @@ serialize_location loc
+    | Syntaxerr.Ill_formed_ast(loc, str) ->
+        serialize_variant "IllFormedAst" @@ serialize_seq ([
+            serialize_location loc;
+            serialize_string str;
+        ])
+    | Syntaxerr.Invalid_package_type(loc, str) ->
+        serialize_variant "InvalidPackageType" @@ serialize_seq ([
+            serialize_location loc;
+            serialize_string str;
+        ])
+
+    (*************************************************************************)
+    (***************************** PARSE FUNCTION ****************************)
+    (*************************************************************************)
+
+    let serialize_ast (ast: Parsetree.toplevel_phrase list) : S.t =
+        build_list serialize_toplevel_phrase ast
+
+    let serialize_ast_from ~src:src ~path:path : S.t =
+        serialize_ast (parse_ast src path)
+end
