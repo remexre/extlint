@@ -12,16 +12,33 @@ expr_loc(Expr, LocId) :- 'Expression'(Expr, _, LocId, _).
 expr_text(Expr, Text) :- expr_loc(Expr, Loc), loc_text(Loc, Text).
 
 % Boolean "Literals"
-expr_false(ExprId, LocId) :-
-	'Expression'(ExprId, DescId, LocId, _Attrs),
-	'ExpressionDesc'(DescId, 'Construct', CtorLocId, _),
-	'Loc'(CtorLocId, CtorIdentId, _),
-	'LongIdent'(CtorIdentId, 'Ident', false).
-expr_true(ExprId, LocId) :-
-	'Expression'(ExprId, DescId, LocId, _Attrs),
-	'ExpressionDesc'(DescId, 'Construct', CtorLocId, _),
-	'Loc'(CtorLocId, CtorIdentId, _),
-	'LongIdent'(CtorIdentId, 'Ident', true).
+expr_false(ExprId, LocId) :- expr_unit_ctor(ExprId, false, LocId).
+expr_true(ExprId, LocId) :- expr_unit_ctor(ExprId, true, LocId).
+
+% List Constructors
+expr_cons(ExprId, HeadId, TailId, LocId) :-
+	expr_ctor_args(ExprId, '::', ArgsId, LocId),
+	expr_tuple(ArgsId, [HeadId, TailId], _).
+expr_nil(ExprId, LocId) :- expr_unit_ctor(ExprId, '[]', LocId).
+expr_singlelist(ExprId, ItemId, LocId) :-
+	expr_cons(ExprId, ItemId, TailId, LocId),
+	expr_nil(TailId, _).
+
+% List Function Calls
+expr_append(ExprId, LeftId, RightId, LocId) :-
+	expr_call(ExprId, AppendId, [LeftId, RightId], LocId),
+	expr_ident(AppendId, '@', _).
+
+% Function Calls
+expr_call(ExprId, FuncId, Args, LocId) :-
+	'Expression'(ExprId, DescId, LocId, _),
+	'ExpressionDesc'(DescId, 'Apply', FuncId, ArgListId),
+	arglist(ArgListId, Args).
+arglist(Id, []) :- nil(Id).
+arglist(Id, [H|T]) :-
+	cons(Id, LabelId, H, Tail),
+	'ArgLabel'(LabelId, 'NoLabel'),
+	arglist(Tail, T).
 
 % If Expressions
 expr_if(ExprId, CondId, ThenId, LocId) :-
@@ -75,3 +92,27 @@ expr_eq(ExprId, LeftId, RightId, LocId) :-
 	cons(Args0Id, _, LeftId, Args1Id),
 	cons(Args1Id, _, RightId, Args2Id),
 	nil(Args2Id).
+
+% Constructors
+expr_unit_ctor(ExprId, Name, LocId) :-
+	'Expression'(ExprId, DescId, LocId, _Attrs),
+	'ExpressionDesc'(DescId, 'Construct', CtorLocId, ArgsId),
+	'Option'(ArgsId, 'None'),
+	'Loc'(CtorLocId, CtorIdentId, _),
+	'LongIdent'(CtorIdentId, 'Ident', Name).
+expr_ctor_args(ExprId, Name, Args, LocId) :-
+	'Expression'(ExprId, DescId, LocId, _Attrs),
+	'ExpressionDesc'(DescId, 'Construct', CtorLocId, ArgsId),
+	'Option'(ArgsId, 'Some', Args),
+	'Loc'(CtorLocId, CtorIdentId, _),
+	'LongIdent'(CtorIdentId, 'Ident', Name).
+
+% Tuples
+expr_tuple(ExprId, Vals, LocId) :-
+	'Expression'(ExprId, DescId, LocId, _Attrs),
+	'ExpressionDesc'(DescId, 'Tuple', ValsId),
+	tuplelist(ValsId, Vals).
+tuplelist(Id, []) :- nil(Id).
+tuplelist(Id, [H|T]) :-
+	cons(Id, H, TId),
+	tuplelist(TId, T).

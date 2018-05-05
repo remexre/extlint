@@ -17,6 +17,8 @@ let baz = function
 | [] -> []
 | xs -> (List.hd xs) :: (List.tl xs)
 
+let cons h t = [h] @ t
+
 let quux =
     if 1 = 2 then
         1

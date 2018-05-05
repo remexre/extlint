@@ -40,6 +40,10 @@ lint('partial list function', 1, Loc, null) :- expr_mod_ident(_, 'List', 'tl', L
 % Warn about if-then without an else.
 lint('if-then without an else', 0, Loc, null) :- expr_if(_, _, _, Loc).
 
+% Dock two points for append-where-you-mean-cons.
+lint('useless append', 2, Loc, [H, T]) :-
+	todo.
+
 % The long_desc/4 predicate is:
 %
 % long_desc(+Name, +LocId, +AuxData, -Description).
@@ -77,3 +81,8 @@ long_desc('partial list function', Loc, _, Desc) :-
 		[Fn]).
 long_desc('if-then without an else', _, _, Desc) :-
 	swritef(Desc, "You probably don't want to have an if-then without an else.").
+long_desc('useless append', Loc, [H, T], Desc) :-
+	loc_text(Loc, EStr),
+	expr_text(H, HStr),
+	expr_text(T, TStr),
+	swritef(Desc, "Instead of `%w`, write `%w :: %w`.", [EStr, HStr, TStr]).
