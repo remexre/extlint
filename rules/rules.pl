@@ -20,9 +20,12 @@ expr_cons(ExprId, HeadId, TailId, LocId) :-
 	expr_ctor_args(ExprId, '::', ArgsId, LocId),
 	expr_tuple(ArgsId, [HeadId, TailId], _).
 expr_nil(ExprId, LocId) :- expr_unit_ctor(ExprId, '[]', LocId).
+expr_list(ExprId, [], LocId) :- expr_nil(ExprId, LocId).
+expr_list(ExprId, [H|T], LocId) :-
+	expr_cons(ExprId, H, TailId, LocId),
+	expr_list(TailId, T, _).
 expr_singlelist(ExprId, ItemId, LocId) :-
-	expr_cons(ExprId, ItemId, TailId, LocId),
-	expr_nil(TailId, _).
+	expr_list(ExprId, [ItemId], LocId).
 
 % List Function Calls
 expr_append(ExprId, LeftId, RightId, LocId) :-
