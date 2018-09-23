@@ -32,8 +32,8 @@ use std::path::PathBuf;
 use std::process::exit;
 
 use failure::Error;
-use futures::{Future, Stream};
 use futures::stream::futures_unordered;
+use futures::{Future, Stream};
 use tokio_core::reactor::Core;
 
 use grading_scripts::get_student_uiids;
@@ -97,34 +97,33 @@ fn run(
     let student_uiids =
         get_student_uiids(&github_url, grading_scripts_dir, &mut core)?;
     info!("Pulling {} repos...", student_uiids.len());
-    let handle = core.handle();
     core.run(
         futures_unordered(student_uiids.into_iter().map(|uiid| {
             let path = repo_dir.join(&format!("repo-{}", uiid));
             let url = format!("{}repo-{}.git", github_url, uiid);
-            clone_or_pull(path, url, &handle).then(Ok)
+            clone_or_pull(path, url).then(Ok)
         })).collect()
-            .and_then(|res| {
-                let mut ok = 0;
-                let mut err = 0;
-                for r in res {
-                    match r {
-                        Ok(_) => {
-                            ok += 1;
+        .and_then(|res| {
+            let mut ok = 0;
+            let mut err = 0;
+            for r in res {
+                match r {
+                    Ok(_) => {
+                        ok += 1;
+                    }
+                    Err(e) => {
+                        for err in e.causes() {
+                            error!("{}", err);
                         }
-                        Err(e) => {
-                            for err in e.causes() {
-                                error!("{}", err);
-                            }
-                            err += 1;
-                        }
+                        err += 1;
                     }
                 }
-                info!("Successfully cloned {} repos.", ok);
-                if err != 0 {
-                    warn!("{} repos could not be cloned.", err);
-                }
-                Ok(err)
-            }),
+            }
+            info!("Successfully cloned {} repos.", ok);
+            if err != 0 {
+                warn!("{} repos could not be cloned.", err);
+            }
+            Ok(err)
+        }),
     )
 }

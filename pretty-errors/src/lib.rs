@@ -21,7 +21,8 @@ use ansi_term::{Colour, Style};
 /// range of `src`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Message<'a> {
-    #[cfg(feature = "color")] pub color: bool,
+    #[cfg(feature = "color")]
+    pub color: bool,
     pub path: Option<&'a str>,
     pub text: Cow<'a, str>,
 
@@ -109,7 +110,7 @@ impl<'a> Message<'a> {
 }
 
 #[cfg(feature = "color")]
-lazy_static!{
+lazy_static! {
     static ref BAR_STYLE: Style = Style::new().bold().fg(Colour::Blue);
     static ref ERROR_STYLE: Style = Style::new().bold().fg(Colour::Red);
 }

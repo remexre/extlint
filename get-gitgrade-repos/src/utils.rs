@@ -4,7 +4,6 @@ use std::process::{Command, Stdio};
 
 use failure::Error;
 use futures::{Async, Future};
-use tokio_core::reactor::Handle;
 use tokio_process::{CommandExt, OutputAsync};
 
 /// A future for a successful `git clone` or `git pull`.
@@ -28,30 +27,27 @@ impl Future for CloneOrPullFuture {
         match self.inner.poll() {
             Ok(Async::Ready(_)) => Ok(Async::Ready(self.path.take().unwrap())),
             Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(err) => Err(err.context({
-                let path = self.path.take().unwrap();
-                let path = path.display();
-                if let Some(url) = self.url.take() {
-                    format!("When cloning {} into {}", url, path)
-                } else {
-                    format!("When pulling {}", path)
-                }
-            }).into()),
+            Err(err) => Err(err
+                .context({
+                    let path = self.path.take().unwrap();
+                    let path = path.display();
+                    if let Some(url) = self.url.take() {
+                        format!("When cloning {} into {}", url, path)
+                    } else {
+                        format!("When pulling {}", path)
+                    }
+                }).into()),
         }
     }
 }
 
 /// Clones the given URL into the path if it doesn't exist, or pulls if it
 /// does.
-pub fn clone_or_pull(
-    path: PathBuf,
-    url: String,
-    handle: &Handle,
-) -> CloneOrPullFuture {
+pub fn clone_or_pull(path: PathBuf, url: String) -> CloneOrPullFuture {
     let exists = path.exists();
     let fut = if exists {
         debug!("Pulling {}...", path.display());
-        run_command("git", &["pull"], Some(&path), handle)
+        run_command("git", &["pull"], Some(&path))
     } else {
         debug!("Cloning {} from {}...", path.display(), url);
         run_command(
@@ -62,7 +58,6 @@ pub fn clone_or_pull(
                 OsStr::new(&path),
             ],
             None,
-            handle,
         )
     };
     CloneOrPullFuture {
@@ -106,9 +101,8 @@ pub fn run_command<
     command: Cmd,
     args: Args,
     cwd: Option<&Path>,
-    handle: &Handle,
 ) -> RunCommandFuture {
-    lazy_static!{
+    lazy_static! {
         static ref DOT: PathBuf = PathBuf::from(".");
     }
 
@@ -117,6 +111,6 @@ pub fn run_command<
             .args(args)
             .current_dir(cwd.unwrap_or(&DOT))
             .stderr(Stdio::inherit())
-            .output_async(handle),
+            .output_async(),
     )
 }
